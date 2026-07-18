@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "sql:default",
+    "store:default",
+    "clipboard-manager:default",
+    "notification:default",
+    "autostart:default",
+    "shell:default"
+  ]
+}

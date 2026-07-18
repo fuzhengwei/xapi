@@ -1,0 +1,55 @@
+[package]
+name = "xapi"
+version = "0.1.0"
+description = "xapi - Local LLM API Gateway"
+authors = ["xiaofuge"]
+edition = "2021"
+
+[lib]
+name = "xapi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-store = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-shell = "2"
+
+# HTTP Server
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# HTTP Client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
+async-stream = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono", "macros"] }
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+rand = "0.9"
+async-trait = "0.1"
+bytes = "1"
+
+# Logging
+log = "0.4"

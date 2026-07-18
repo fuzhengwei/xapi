@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+src-tauri/target/
+
+# Build outputs
+dist/
+src-tauri/target/release/bundle/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+src-tauri/logs/
+
+# Database (local runtime data)
+*.db
+*.db-journal
+
+# Tauri generated
+src-tauri/gen/
+
+# Lock files (keep pnpm-lock.yaml and Cargo.lock)
+!pnpm-lock.yaml
+!Cargo.lock
+
+# Documentation artifacts
+xapi_build_complete_*.md
+xapi_usage_guide_*.md
