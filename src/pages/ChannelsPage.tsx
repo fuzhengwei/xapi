@@ -34,8 +34,14 @@ export function ChannelsPage() {
   };
 
   const handleToggle = async (ch: Channel) => {
-    await channelApi.update({ id: ch.id, status: ch.status === 1 ? 0 : 1 });
-    load();
+    const newEnabled = ch.status !== 1;
+    try {
+      await channelApi.toggle(ch.id, newEnabled);
+      load();
+    } catch (e) {
+      console.error("Failed to toggle channel:", e);
+      alert(`切换渠道状态失败: ${String(e)}`);
+    }
   };
 
   return (
@@ -98,20 +104,36 @@ export function ChannelsPage() {
                     </div>
 
                     {(ch.last_test_at || result) && (
-                      <div className="mt-4 rounded-2xl border border-white/8 bg-black/16 px-3 py-3 text-xs">
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
                         {ch.last_test_at && (
-                          <div className="text-muted-foreground">
-                            最近测试: {formatTime(ch.last_test_at)}
+                          <div className="text-slate-500">
+                            <span className="text-slate-400">最近测试:</span>{" "}
+                            <span className="font-medium text-slate-600">{formatTime(ch.last_test_at)}</span>
                             {ch.last_test_ok !== null && (
-                              <span className={ch.last_test_ok ? " ml-2 text-emerald-300" : " ml-2 text-red-300"}>
-                                {ch.last_test_ok ? "成功" : "失败"}
+                              <span className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${
+                                ch.last_test_ok
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}>
+                                {ch.last_test_ok ? (
+                                  <><span className="text-emerald-500">✓</span> 成功</>
+                                ) : (
+                                  <><span className="text-red-500">✗</span> 失败</>
+                                )}
                               </span>
                             )}
                           </div>
                         )}
                         {result && (
-                          <div className={`mt-1 ${result.success ? "text-emerald-300" : "text-red-300"}`}>
-                            {result.success ? "✓" : "✗"} {result.message} ({result.latency_ms}ms)
+                          <div className={`mt-1.5 flex items-center gap-1.5 font-medium ${
+                            result.success ? "text-emerald-700" : "text-red-700"
+                          }`}>
+                            {result.success ? (
+                              <><span className="text-emerald-500">✓</span> 连接成功</>
+                            ) : (
+                              <><span className="text-red-500">✗</span> {result.message}</>
+                            )}
+                            <span className="text-slate-400">({result.latency_ms}ms)</span>
                           </div>
                         )}
                       </div>

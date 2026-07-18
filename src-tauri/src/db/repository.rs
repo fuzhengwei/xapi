@@ -111,6 +111,17 @@ impl Repository {
         self.get_channel(&input.id).await
     }
 
+    pub async fn update_channel_status(&self, id: &str, status: i64) -> Result<(), sqlx::Error> {
+        let now = now_iso();
+        sqlx::query("UPDATE channels SET status = ?, updated_at = ? WHERE id = ?")
+            .bind(status)
+            .bind(&now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn delete_channel(&self, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM channels WHERE id = ?")
             .bind(id)

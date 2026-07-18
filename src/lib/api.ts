@@ -14,6 +14,7 @@ export const channelApi = {
   get: (id: string) => invoke<Channel>("get_channel", { id }),
   create: (input: CreateChannelInput) => invoke<Channel>("create_channel", { input }),
   update: (input: UpdateChannelInput) => invoke<Channel>("update_channel", { input }),
+  toggle: (id: string, enabled: boolean) => invoke<void>("toggle_channel", { id, enabled }),
   delete: (id: string) => invoke<void>("delete_channel", { id }),
   test: (id: string) => invoke<TestChannelResult>("test_channel", { id }),
 };

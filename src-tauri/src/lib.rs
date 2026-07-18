@@ -118,6 +118,7 @@ pub fn run() {
             commands::channel::get_channel,
             commands::channel::create_channel,
             commands::channel::update_channel,
+            commands::channel::toggle_channel,
             commands::channel::delete_channel,
             commands::channel::test_channel,
             commands::api_key::get_api_keys,
