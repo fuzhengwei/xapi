@@ -34,9 +34,9 @@ export function ChannelsPage() {
   };
 
   const handleToggle = async (ch: Channel) => {
-    const newEnabled = ch.status !== 1;
+    const newStatus = ch.status === 1 ? 0 : 1;
     try {
-      await channelApi.toggle(ch.id, newEnabled);
+      await channelApi.toggle(ch.id, newStatus);
       load();
     } catch (e) {
       console.error("Failed to toggle channel:", e);

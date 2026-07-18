@@ -82,9 +82,8 @@ pub async fn update_channel(input: UpdateChannelInput, state: tauri::State<'_, s
 }
 
 #[tauri::command]
-pub async fn toggle_channel(id: String, enabled: bool, state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<(), String> {
+pub async fn toggle_channel(id: String, status: i64, state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<(), String> {
     let repo = Repository::new(state.db.pool.clone());
-    let status: i64 = if enabled { 1 } else { 0 };
     repo.update_channel_status(&id, status).await.map_err(|e| e.to_string())
 }
 
