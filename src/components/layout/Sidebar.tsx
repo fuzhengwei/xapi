@@ -9,7 +9,6 @@ import {
   ScrollText,
   Settings,
   Server,
-  Sparkles,
   ChevronRight,
   ExternalLink,
   Link,
@@ -46,8 +45,8 @@ export function Sidebar() {
     <aside className="w-72 h-screen flex-col border-r border-slate-200 bg-[#eef3f8] px-3 py-3 hidden md:flex">
       <div className="surface rounded-[22px] p-5">
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#3c82f6,#2f6fed)] text-white shadow-[0_10px_20px_rgba(47,111,237,0.18)]">
-            <Sparkles size={17} />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-[0_10px_20px_rgba(47,111,237,0.18)] overflow-hidden">
+            <img src="/logo.png" alt="WaLiAPI" className="h-full w-full object-cover" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
