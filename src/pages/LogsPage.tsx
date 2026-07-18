@@ -1,10 +1,99 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { logApi } from "../lib/api";
 import type { RequestLog } from "../types";
 import { formatTime, formatDuration, formatNumber } from "../lib/constants";
-import { ScrollText, RefreshCw, Trash2, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
+import {
+  ScrollText, RefreshCw, Trash2, ChevronDown, ChevronRight, AlertCircle,
+  Bot, User, Wrench, Terminal, Eye, FileCode2, Image, ArrowRightLeft, Shield, Timer, Coins,
+} from "lucide-react";
 
 const PAGE_SIZE = 20;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Extract all tool/function names from a message object */
+function extractToolNames(msg: Record<string, unknown>): string[] {
+  const names: string[] = [];
+  // Anthropic tool_use blocks in content array
+  if (Array.isArray(msg.content)) {
+    for (const block of msg.content as Array<Record<string, unknown>>) {
+      if (block.type === "tool_use" && typeof block.name === "string") {
+        names.push(block.name);
+      }
+    }
+  }
+  // OpenAI tool_calls
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls as Array<Record<string, unknown>>) {
+      const fn = tc.function as Record<string, unknown> | undefined;
+      if (fn && typeof fn.name === "string") names.push(fn.name);
+    }
+  }
+  // legacy function_call
+  if (msg.function_call && typeof msg.function_call === "object") {
+    const fc = msg.function_call as Record<string, unknown>;
+    if (typeof fc.name === "string") names.push(fc.name);
+  }
+  return names;
+}
+
+/** Get a short preview of message content */
+function getContentPreview(msg: Record<string, unknown>, maxLen: number = 140): string {
+  const content = msg.content;
+  if (typeof content === "string") {
+    return content.length > maxLen ? content.slice(0, maxLen) + "…" : content;
+  }
+  if (Array.isArray(content)) {
+    // Anthropic-style content blocks
+    const parts: string[] = [];
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === "text" && typeof block.text === "string") {
+        const t = block.text.length > maxLen ? block.text.slice(0, maxLen) + "…" : block.text;
+        parts.push(t);
+      } else if (block.type === "tool_use") {
+        parts.push(`🔧 ${block.name}`);
+      } else if (block.type === "tool_result") {
+        const rc = typeof block.content === "string"
+          ? block.content.slice(0, 40) + "…"
+          : "tool_result";
+        parts.push(`📤 ${rc}`);
+      } else if (block.type === "image") {
+        parts.push("🖼 image");
+      } else {
+        parts.push(String(block.type));
+      }
+    }
+    const joined = parts.join(" | ");
+    return joined.length > maxLen ? joined.slice(0, maxLen) + "…" : joined;
+  }
+  if (msg.tool_calls) return `🔧 ${extractToolNames(msg).join(", ")}`;
+  if (msg.function_call) return `🔧 ${(msg.function_call as Record<string, unknown>).name as string}`;
+  const str = JSON.stringify(content);
+  return str.length > maxLen ? str.slice(0, maxLen) + "…" : str;
+}
+
+/** Collect distinct tool names across all messages */
+function collectAllToolNames(messages: Array<Record<string, unknown>>): string[] {
+  const set = new Set<string>();
+  for (const msg of messages) {
+    for (const name of extractToolNames(msg)) set.add(name);
+  }
+  return Array.from(set);
+}
+
+/** Role icon + color mapping */
+const ROLE_META: Record<string, { icon: typeof Bot; color: string; bg: string; label: string }> = {
+  system:    { icon: Terminal,   color: "text-slate-600",    bg: "bg-slate-100",  label: "System" },
+  user:      { icon: User,       color: "text-blue-600",     bg: "bg-blue-50",    label: "User" },
+  assistant: { icon: Bot,        color: "text-emerald-600",  bg: "bg-emerald-50", label: "AI" },
+  tool:      { icon: Wrench,     color: "text-amber-600",    bg: "bg-amber-50",   label: "Tool" },
+  function:  { icon: Wrench,     color: "text-amber-600",    bg: "bg-amber-50",   label: "Func" },
+};
+function getRoleMeta(role: string) {
+  return ROLE_META[role] || { icon: FileCode2, color: "text-purple-600", bg: "bg-purple-50", label: role };
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
 
 export function LogsPage() {
   const [logs, setLogs] = useState<RequestLog[]>([]);
@@ -55,7 +144,7 @@ export function LogsPage() {
       <div className="flex items-center justify-between gap-4 px-7 pt-7 pb-4 shrink-0">
         <div>
           <h1 className="text-[28px] font-bold leading-tight tracking-tight">请求日志</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">查看请求结果、Token 消耗与请求详情</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">查看请求结果、Token 消耗、工具调用与网关路由详情</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowCleanModal(true)} className="action-secondary text-red-500">
@@ -141,6 +230,8 @@ export function LogsPage() {
   );
 }
 
+// ─── LogRow ──────────────────────────────────────────────────────────────────
+
 function LogRow({
   log,
   expanded,
@@ -152,10 +243,6 @@ function LogRow({
   onToggle: () => void;
   onDelete: () => void;
 }) {
-  const tokenDetail = log.prompt_tokens > 0 || log.completion_tokens > 0
-    ? `${log.prompt_tokens} + ${log.completion_tokens} = ${log.total_tokens}`
-    : `${log.total_tokens}`;
-
   return (
     <>
       <tr className="border-b border-white/6 transition-colors hover:bg-white/4">
@@ -195,53 +282,320 @@ function LogRow({
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={9} className="px-3 py-3 bg-white/3 border-b border-white/6">
-            <div className="space-y-3">
-              {/* Token detail */}
-              <div className="flex flex-wrap gap-4 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Prompt Tokens: </span>
-                  <span className="font-mono">{log.prompt_tokens}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Completion Tokens: </span>
-                  <span className="font-mono">{log.completion_tokens}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Total Tokens: </span>
-                  <span className="font-mono font-semibold">{log.total_tokens}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Mode: </span>
-                  <span>{log.mode}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Retry: </span>
-                  <span>{log.is_retry ? "Yes" : "No"}</span>
-                </div>
-              </div>
-
-              {/* Error */}
-              {log.error_message && (
-                <div className="flex items-start gap-2 rounded-lg bg-red-500/8 p-3 text-xs text-red-400">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                  <span className="break-all">{log.error_message}</span>
-                </div>
-              )}
-
-              {/* Request body */}
-              {log.request_body ? (
-                <RequestBodyView body={log.request_body} />
-              ) : (
-                <div className="text-xs text-muted-foreground/50">无请求内容记录</div>
-              )}
-            </div>
+          <td colSpan={9} className="px-4 py-4 bg-slate-50/80 border-b border-border">
+            <LogDetail log={log} />
           </td>
         </tr>
       )}
     </>
   );
 }
+
+// ─── LogDetail ────────────────────────────────────────────────────────────────
+
+function LogDetail({ log }: { log: RequestLog }) {
+  const [jsonExpanded, setJsonExpanded] = useState(false);
+
+  // Parse request body
+  let parsed: Record<string, unknown> | null = null;
+  let pretty = log.request_body || "";
+  let parseError = false;
+  try {
+    if (log.request_body) {
+      parsed = JSON.parse(log.request_body) as Record<string, unknown>;
+      pretty = JSON.stringify(parsed, null, 2);
+    }
+  } catch { parseError = true; }
+
+  const byteSize = log.request_body ? new Blob([log.request_body]).size : 0;
+  const sizeLabel = byteSize > 1024 ? `${(byteSize / 1024).toFixed(1)} KB` : `${byteSize} B`;
+
+  const messages: Array<Record<string, unknown>> = parsed && Array.isArray(parsed.messages) ? parsed.messages : [];
+  const allToolNames = useMemo(() => collectAllToolNames(messages), [messages]);
+  const modelRequested = (parsed?.model as string) || log.model;
+  const stream = (parsed?.stream as boolean) || false;
+  const temperature = parsed?.temperature as number | undefined;
+  const maxTokens = parsed?.max_tokens as number | undefined;
+
+  // ── Conversation stats ──
+  const convStats = useMemo(() => {
+    const roles = new Map<string, number>();
+    let totalInputChars = 0;
+    let hasImage = false;
+    for (const msg of messages) {
+      const r = (msg.role as string) || "unknown";
+      roles.set(r, (roles.get(r) || 0) + 1);
+      if (typeof msg.content === "string") totalInputChars += msg.content.length;
+      if (Array.isArray(msg.content)) {
+        for (const b of msg.content as Array<Record<string, unknown>>) {
+          if (b.type === "text" && typeof b.text === "string") totalInputChars += b.text.length;
+          if (b.type === "image") hasImage = true;
+        }
+      }
+    }
+    return { roles, totalInputChars, hasImage, msgCount: messages.length };
+  }, [messages]);
+
+  // ── Cost estimate (rough, GPT-4o pricing as reference) ──
+  const costEstimate = useMemo(() => {
+    const p = log.prompt_tokens;
+    const c = log.completion_tokens;
+    // GPT-4o: $2.5/1M input, $10/1M output (rough)
+    const inputCost = (p / 1_000_000) * 2.5;
+    const outputCost = (c / 1_000_000) * 10;
+    const total = inputCost + outputCost;
+    if (total < 0.001 && total > 0) return "<$0.001";
+    if (total === 0) return "$0";
+    return `$${total.toFixed(3)}`;
+  }, [log.prompt_tokens, log.completion_tokens]);
+
+  // ── Model mapping display ──
+  const modelMappingDisplay = log.upstream_model && log.upstream_model !== log.model
+    ? `${log.model} → ${log.upstream_model}`
+    : null;
+
+  return (
+    <div className="space-y-4">
+      {/* ── Gateway Metadata Cards ── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        {/* Token detail */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Coins size={13} /> Token 消耗</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">{formatNumber(log.total_tokens)}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            输入 {log.prompt_tokens} · 输出 {log.completion_tokens}
+          </div>
+        </div>
+
+        {/* Duration */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Timer size={13} /> 响应耗时</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">{formatDuration(log.duration_ms)}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            {log.is_stream ? "流式传输" : "非流式"}
+          </div>
+        </div>
+
+        {/* Cost estimate */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Coins size={13} /> 成本估算</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">{costEstimate}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">参考 GPT-4o 定价</div>
+        </div>
+
+        {/* Request size */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><FileCode2 size={13} /> 请求大小</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">{sizeLabel}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            {convStats.msgCount} 条消息 · {convStats.totalInputChars > 1000 ? `${(convStats.totalInputChars / 1000).toFixed(1)}K` : convStats.totalInputChars} 字符
+          </div>
+        </div>
+
+        {/* Channel routing */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><Shield size={13} /> 渠道路由</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">{log.channel_name || "-"}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            {log.is_retry ? "⚠ 重试转发" : "✓ 首选渠道"}
+          </div>
+        </div>
+
+        {/* Model mapping */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500"><ArrowRightLeft size={13} /> 模型映射</div>
+          <div className="mt-1.5 text-sm font-semibold text-slate-900">
+            {modelMappingDisplay || modelRequested}
+          </div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            {modelMappingDisplay ? "网关重映射" : "直传上游"}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tool Tags ── */}
+      {allToolNames.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Wrench size={14} className="text-amber-500" />
+          <span className="text-xs text-slate-500 shrink-0">涉及工具:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {allToolNames.map(name => (
+              <span
+                key={name}
+                className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+              >
+                <Wrench size={11} />
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Conversation composition summary ── */}
+      {convStats.msgCount > 0 && (
+        <div className="flex items-center gap-2">
+          <Eye size={14} className="text-blue-500" />
+          <span className="text-xs text-slate-500 shrink-0">对话构成:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from(convStats.roles.entries()).map(([role, count]) => {
+              const meta = getRoleMeta(role);
+              const Icon = meta.icon;
+              return (
+                <span
+                  key={role}
+                  className={`inline-flex items-center gap-1 rounded-md ${meta.bg} border border-slate-200 px-2 py-0.5 text-[11px] font-medium ${meta.color}`}
+                >
+                  <Icon size={11} />
+                  {meta.label} ×{count}
+                </span>
+              );
+            })}
+            {convStats.hasImage && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-[11px] font-medium text-purple-700">
+                <Image size={11} /> 含图片
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Request params tags ── */}
+      <div className="flex flex-wrap gap-1.5">
+        <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-mono font-medium text-blue-700">
+          model: {modelRequested}
+        </span>
+        {stream && (
+          <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            stream
+          </span>
+        )}
+        {temperature !== undefined && (
+          <span className="inline-flex items-center rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] font-mono text-slate-600">
+            temp: {temperature}
+          </span>
+        )}
+        {maxTokens !== undefined && (
+          <span className="inline-flex items-center rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] font-mono text-slate-600">
+            max: {maxTokens}
+          </span>
+        )}
+        {log.is_retry && (
+          <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            ⚠ retry
+          </span>
+        )}
+        {log.mode && (
+          <span className="inline-flex items-center rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] font-mono text-slate-600">
+            mode: {log.mode}
+          </span>
+        )}
+      </div>
+
+      {/* ── Error ── */}
+      {log.error_message && (
+        <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-600">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <span className="break-all">{log.error_message}</span>
+        </div>
+      )}
+
+      {/* ── Messages Timeline ── */}
+      {messages.length > 0 ? (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-slate-600">消息列表 ({messages.length} 条)</span>
+            <button
+              onClick={() => setJsonExpanded(!jsonExpanded)}
+              className="text-xs text-blue-500 hover:text-blue-600 transition-colors font-medium"
+            >
+              {jsonExpanded ? "返回缩略视图" : "查看原始 JSON"}
+            </button>
+          </div>
+
+          {!jsonExpanded && (
+            <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
+              {messages.map((msg, i) => {
+                const role = (msg.role as string) || "unknown";
+                const meta = getRoleMeta(role);
+                const Icon = meta.icon;
+                const toolNames = extractToolNames(msg);
+                const preview = getContentPreview(msg, 140);
+
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-2 rounded-lg ${meta.bg} border border-slate-200/60 px-3 py-2 text-xs transition-colors hover:border-slate-300`}
+                  >
+                    {/* Role badge */}
+                    <div className={`shrink-0 flex items-center gap-1 rounded-md ${meta.bg} px-1.5 py-0.5 font-semibold ${meta.color} min-w-[52px]`}>
+                      <Icon size={12} />
+                      <span className="text-[11px]">{meta.label}</span>
+                    </div>
+
+                    {/* Content preview */}
+                    <div className="min-w-0 flex-1">
+                      <span className="text-slate-600 font-mono leading-relaxed">{preview}</span>
+                      {/* Inline tool tags for this message */}
+                      {toolNames.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {toolNames.map(name => (
+                            <span
+                              key={name}
+                              className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+                            >
+                              🔧 {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sequence number */}
+                    <span className="shrink-0 text-[10px] text-slate-400 font-mono">#&nbsp;{i + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {jsonExpanded && (
+            <pre className="max-h-[420px] w-full overflow-auto rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs font-mono whitespace-pre-wrap break-all text-slate-700">
+              {pretty}
+            </pre>
+          )}
+        </div>
+      ) : log.request_body ? (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-slate-500">请求内容 ({sizeLabel})</span>
+            <button
+              onClick={() => setJsonExpanded(!jsonExpanded)}
+              className="text-xs text-blue-500 hover:text-blue-600 transition-colors"
+            >
+              {jsonExpanded ? "收起" : "展开全部"}
+            </button>
+          </div>
+          {jsonExpanded ? (
+            <pre className="max-h-[420px] w-full overflow-auto rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs font-mono whitespace-pre-wrap break-all text-slate-700">
+              {pretty}
+            </pre>
+          ) : (
+            <div className="text-xs text-slate-500">点击「展开全部」查看原始 JSON</div>
+          )}
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400">无请求内容记录</div>
+      )}
+
+      {parseError && (
+        <div className="text-xs text-amber-500">⚠ JSON 解析失败，显示原始内容</div>
+      )}
+    </div>
+  );
+}
+
+// ─── CleanLogsModal ──────────────────────────────────────────────────────────
 
 function CleanLogsModal({
   onConfirm,
@@ -279,105 +633,6 @@ function CleanLogsModal({
           取消
         </button>
       </div>
-    </div>
-  );
-}
-
-function RequestBodyView({ body }: { body: string }) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Try to parse and pretty-print
-  let parsed: unknown = null;
-  let pretty = body;
-  let parseError = false;
-  try {
-    parsed = JSON.parse(body);
-    pretty = JSON.stringify(parsed, null, 2);
-  } catch {
-    parseError = true;
-  }
-
-  const byteSize = new Blob([body]).size;
-  const sizeLabel = byteSize > 1024 ? `${(byteSize / 1024).toFixed(1)} KB` : `${byteSize} B`;
-
-  // Extract key fields for summary
-  const summary = (() => {
-    if (!parsed || typeof parsed !== "object") return null;
-    const obj = parsed as Record<string, unknown>;
-    const parts: string[] = [];
-    if (obj.model) parts.push(`model: ${obj.model}`);
-    if (obj.stream) parts.push("stream: true");
-    if (obj.temperature !== undefined) parts.push(`temperature: ${obj.temperature}`);
-    if (obj.max_tokens !== undefined) parts.push(`max_tokens: ${obj.max_tokens}`);
-    if (Array.isArray(obj.messages)) parts.push(`messages: ${obj.messages.length} 条`);
-    return parts;
-  })();
-
-  // Extract messages preview if available
-  const messages = (() => {
-    if (!parsed || typeof parsed !== "object") return null;
-    const obj = parsed as Record<string, unknown>;
-    if (!Array.isArray(obj.messages)) return null;
-    return obj.messages as Array<Record<string, unknown>>;
-  })();
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground">请求内容 ({sizeLabel})</span>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          {expanded ? "收起" : "展开全部"}
-        </button>
-      </div>
-
-      {/* Summary — always visible */}
-      {summary && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {summary.map((s, i) => (
-            <span key={i} className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-300 font-mono">
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Messages preview — always visible, shows role + truncated content */}
-      {messages && !expanded && (
-        <div className="space-y-1 mb-2">
-          {messages.slice(0, 3).map((msg, i) => {
-            const role = msg.role as string || "unknown";
-            const content = typeof msg.content === "string"
-              ? msg.content
-              : JSON.stringify(msg.content);
-            const truncated = content.length > 200 ? content.slice(0, 200) + "..." : content;
-            return (
-              <div key={i} className="flex gap-2 rounded-md bg-black/5 px-3 py-1.5 text-xs overflow-hidden">
-                <span className="shrink-0 font-semibold text-muted-foreground w-16">{role}</span>
-                <span className="font-mono text-muted-foreground truncate min-w-0">{truncated}</span>
-              </div>
-            );
-          })}
-          {messages.length > 3 && (
-            <div className="text-xs text-muted-foreground/60 pl-2">
-              ...还有 {messages.length - 3} 条消息，点击「展开全部」查看
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Full JSON — only when expanded */}
-      {expanded && (
-        <pre className="max-h-96 w-full overflow-auto rounded-lg bg-black/5 p-3 text-xs font-mono whitespace-pre-wrap break-all">
-          {pretty}
-        </pre>
-      )}
-
-      {parseError && (
-        <div className="text-xs text-amber-400 mt-1">⚠ JSON 解析失败，显示原始内容</div>
-      )}
     </div>
   );
 }
