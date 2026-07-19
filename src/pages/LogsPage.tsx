@@ -384,7 +384,16 @@ function LogRow({
         <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap overflow-hidden">{formatTime(log.created_at)}</td>
         <td className="px-3 py-2.5 text-xs overflow-hidden truncate">{log.api_key_name || "-"}</td>
         <td className="px-3 py-2.5 text-xs overflow-hidden truncate">{log.channel_name || "-"}</td>
-        <td className="px-3 py-2.5 text-xs font-mono overflow-hidden truncate">{log.model}</td>
+        <td className="px-3 py-2.5 text-xs font-mono overflow-hidden truncate">
+          <div className="flex flex-col gap-0.5">
+            <span className="truncate">{log.model}</span>
+            {log.upstream_model && log.upstream_model !== log.model && (
+              <span className="text-[10px] text-blue-500 leading-tight truncate">
+                → {log.upstream_model}
+              </span>
+            )}
+          </div>
+        </td>
         <td className="px-3 py-2.5 text-xs">
           <div className="flex items-center gap-1.5">
             <span className={`rounded-full px-2 py-0.5 ${log.status_code === 200 ? "bg-emerald-500/12 text-emerald-300" : "bg-red-500/12 text-red-300"}`}>
