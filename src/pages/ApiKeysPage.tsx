@@ -8,15 +8,25 @@ export function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ApiKey | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => apiKeyApi.getAll().then(setKeys).catch(() => {});
 
   useEffect(() => { load(); }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("确认删除此密钥？")) return;
-    await apiKeyApi.delete(id);
-    load();
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiKeyApi.delete(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+    } catch (e) {
+      alert(`删除失败: ${e}`);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleToggle = async (k: ApiKey) => {
@@ -97,7 +107,7 @@ export function ApiKeysPage() {
                   <button onClick={() => handleToggle(k)} className="action-secondary px-3 py-2" title={k.status === 1 ? "禁用" : "启用"}>
                     <Power size={16} className={k.status === 1 ? "text-emerald-300" : "text-zinc-400"} />
                   </button>
-                  <button onClick={() => handleDelete(k.id)} className="action-secondary px-3 py-2 text-red-300" title="删除">
+                  <button onClick={() => setDeleteTarget(k)} className="action-secondary px-3 py-2 text-red-300" title="删除">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -113,6 +123,13 @@ export function ApiKeysPage() {
           onSaved={() => { setShowForm(false); load(); }}
         />
       )}
+
+      <DeleteConfirmDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        deleting={deleting}
+      />
     </div>
   );
 }
@@ -163,6 +180,56 @@ function ApiKeyForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteConfirmDialog({
+  target,
+  onClose,
+  onConfirm,
+  deleting,
+}: {
+  target: ApiKey | null;
+  onClose: () => void;
+  onConfirm: () => void;
+  deleting: boolean;
+}) {
+  if (!target) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="surface w-full max-w-sm rounded-[28px] p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-2.5">
+            <Trash2 className="h-5 w-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold">删除密钥</h3>
+            <p className="text-sm text-muted-foreground">此操作不可撤销</p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-border bg-background/50 px-4 py-3 text-sm">
+          <div className="text-muted-foreground">密钥名称</div>
+          <div className="mt-1 font-medium">{target.name}</div>
+          <div className="mt-2 text-xs font-mono text-muted-foreground truncate">{target.key}</div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="action-secondary">取消</button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="inline-flex items-center gap-2 rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+          >
+            {deleting ? "删除中..." : "确认删除"}
+          </button>
+        </div>
       </div>
     </div>
   );
