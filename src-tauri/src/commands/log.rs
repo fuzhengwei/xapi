@@ -1,4 +1,4 @@
-use crate::db::models::RequestLog;
+use crate::db::models::{RequestLog, RequestSecurityFinding};
 use crate::db::repository::Repository;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,12 @@ pub struct LogDto {
     pub is_retry: bool,
     pub created_at: String,
     pub request_body: Option<String>,
+    pub risk_level: String,
+    pub risk_score: i64,
+    pub risk_summary: Option<String>,
+    pub security_action: String,
+    pub sanitized: bool,
+    pub blocked_reason: Option<String>,
 }
 
 impl From<RequestLog> for LogDto {
@@ -44,6 +50,47 @@ impl From<RequestLog> for LogDto {
             is_retry: l.is_retry == 1,
             created_at: l.created_at,
             request_body: l.request_body,
+            risk_level: l.risk_level,
+            risk_score: l.risk_score,
+            risk_summary: l.risk_summary,
+            security_action: l.security_action,
+            sanitized: l.sanitized == 1,
+            blocked_reason: l.blocked_reason,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SecurityFindingDto {
+    pub id: String,
+    pub log_id: String,
+    pub phase: String,
+    pub category: String,
+    pub rule_id: String,
+    pub severity: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub evidence_masked: Option<String>,
+    pub action: Option<String>,
+    pub created_at: String,
+}
+
+impl From<RequestSecurityFinding> for SecurityFindingDto {
+    fn from(f: RequestSecurityFinding) -> Self {
+        Self {
+            id: f.id,
+            log_id: f.log_id,
+            phase: f.phase,
+            category: f.category,
+            rule_id: f.rule_id,
+            severity: f.severity,
+            title: f.title,
+            description: f.description,
+            location: f.location,
+            evidence_masked: f.evidence_masked,
+            action: f.action,
+            created_at: f.created_at,
         }
     }
 }
@@ -101,6 +148,15 @@ pub async fn get_log(
 ) -> Result<LogDto, String> {
     let repo = Repository::new(state.db.pool.clone());
     repo.get_log(&id).await.map_err(|e| e.to_string()).map(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_log_security_findings(
+    log_id: String,
+    state: tauri::State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<SecurityFindingDto>, String> {
+    let repo = Repository::new(state.db.pool.clone());
+    repo.get_security_findings(&log_id).await.map_err(|e| e.to_string()).map(|fs| fs.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]

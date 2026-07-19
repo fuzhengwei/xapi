@@ -97,6 +97,12 @@ pub struct RequestLog {
     pub is_retry: i64,
     pub created_at: String,
     pub request_body: Option<String>,
+    pub risk_level: String,
+    pub risk_score: i64,
+    pub risk_summary: Option<String>,
+    pub security_action: String,
+    pub sanitized: i64,
+    pub blocked_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,4 +126,22 @@ pub struct LogStats {
 
 pub fn now_iso() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RequestSecurityFinding {
+    pub id: String,
+    pub log_id: String,
+    pub phase: String,
+    pub category: String,
+    pub rule_id: String,
+    pub severity: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub evidence_masked: Option<String>,
+    pub evidence_hash: Option<String>,
+    pub action: Option<String>,
+    pub created_at: String,
 }

@@ -23,6 +23,22 @@ pub struct Settings {
     pub retry_enabled: bool,
     #[serde(default = "default_retry_times")]
     pub retry_times: i32,
+    #[serde(default = "default_security_enabled")]
+    pub security_enabled: bool,
+    #[serde(default = "default_security_mode")]
+    pub security_mode: String,
+    #[serde(default = "default_true")]
+    pub security_scan_unicode: bool,
+    #[serde(default = "default_true")]
+    pub security_scan_tools: bool,
+    #[serde(default = "default_true")]
+    pub security_scan_network: bool,
+    #[serde(default = "default_false")]
+    pub security_scan_response: bool,
+    #[serde(default = "default_false")]
+    pub security_redact_secrets: bool,
+    #[serde(default = "default_false")]
+    pub security_block_on_critical: bool,
 }
 
 fn default_port() -> u16 { 8777 }
@@ -33,6 +49,8 @@ fn default_true() -> bool { true }
 fn default_false() -> bool { false }
 fn default_retry_enabled() -> bool { true }
 fn default_retry_times() -> i32 { 2 }
+fn default_security_enabled() -> bool { true }
+fn default_security_mode() -> String { "audit".to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -46,6 +64,14 @@ impl Default for Settings {
             auto_start: default_false(),
             retry_enabled: default_retry_enabled(),
             retry_times: default_retry_times(),
+            security_enabled: default_security_enabled(),
+            security_mode: default_security_mode(),
+            security_scan_unicode: default_true(),
+            security_scan_tools: default_true(),
+            security_scan_network: default_true(),
+            security_scan_response: default_false(),
+            security_redact_secrets: default_false(),
+            security_block_on_critical: default_false(),
         }
     }
 }
@@ -77,6 +103,14 @@ pub async fn get_settings(app: AppHandle) -> Result<Settings, String> {
         auto_start: get_bool(&store, "general.auto_start", false),
         retry_enabled: get_bool(&store, "retry.enabled", true),
         retry_times: get_u64(&store, "retry.times", 2) as i32,
+        security_enabled: get_bool(&store, "security.enabled", true),
+        security_mode: get_str(&store, "security.mode", "audit"),
+        security_scan_unicode: get_bool(&store, "security.scan_unicode", true),
+        security_scan_tools: get_bool(&store, "security.scan_tools", true),
+        security_scan_network: get_bool(&store, "security.scan_network", true),
+        security_scan_response: get_bool(&store, "security.scan_response", false),
+        security_redact_secrets: get_bool(&store, "security.redact_secrets", false),
+        security_block_on_critical: get_bool(&store, "security.block_on_critical", false),
     };
     Ok(settings)
 }
@@ -93,6 +127,14 @@ pub async fn save_settings(settings: Settings, app: AppHandle) -> Result<(), Str
     store.set("general.auto_start", settings.auto_start);
     store.set("retry.enabled", settings.retry_enabled);
     store.set("retry.times", settings.retry_times);
+    store.set("security.enabled", settings.security_enabled);
+    store.set("security.mode", serde_json::json!(settings.security_mode));
+    store.set("security.scan_unicode", settings.security_scan_unicode);
+    store.set("security.scan_tools", settings.security_scan_tools);
+    store.set("security.scan_network", settings.security_scan_network);
+    store.set("security.scan_response", settings.security_scan_response);
+    store.set("security.redact_secrets", settings.security_redact_secrets);
+    store.set("security.block_on_critical", settings.security_block_on_critical);
     store.save().map_err(|e| e.to_string())?;
     Ok(())
 }

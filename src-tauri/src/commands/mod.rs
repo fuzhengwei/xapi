@@ -4,3 +4,4 @@ pub mod log;
 pub mod stats;
 pub mod settings;
 pub mod server;
+pub mod security;

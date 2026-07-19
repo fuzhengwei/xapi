@@ -3,6 +3,7 @@ use crate::core::dispatcher::Dispatcher;
 use crate::db::models::{Channel, RequestLog};
 use crate::db::repository::Repository;
 use crate::utils;
+use crate::security;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::AppHandle;
@@ -27,6 +28,53 @@ pub async fn handle_request(
 ) -> Result<ProxyResult, (u16, String)> {
     let start = Instant::now();
     let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string();
+    let security_settings = security::get_security_settings(app);
+    let security_result = security::scan_request(&body, &security_settings);
+
+    // Real redaction: if redact mode is active, sanitize the request body before forwarding
+    let (forward_body, was_redacted) = if matches!(security_result.action, security::SecurityAction::Redact) || security_settings.redact_secrets {
+        security::redact_request_body(&body, &security_settings)
+    } else {
+        (body.clone(), false)
+    };
+    let mut security_result = security_result;
+    if was_redacted {
+        security_result.sanitized = true;
+    }
+
+    if matches!(security_result.action, security::SecurityAction::Block) {
+        let log = RequestLog {
+            id: utils::id::new_id(),
+            seq: None,
+            api_key_id: Some(api_key_id.to_string()),
+            api_key_name: Some(api_key_name.to_string()),
+            channel_id: None,
+            channel_name: None,
+            model: model.clone(),
+            upstream_model: None,
+            mode: "chat".to_string(),
+            status_code: 451,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            duration_ms: start.elapsed().as_millis() as i64,
+            error_message: security_result.blocked_reason.clone(),
+            is_stream: if is_stream { 1 } else { 0 },
+            is_retry: 0,
+            created_at: utils::time::now_iso(),
+            request_body: request_body.clone(),
+            risk_level: security_result.risk_level.as_str().to_string(),
+            risk_score: security_result.risk_score as i64,
+            risk_summary: Some(security_result.summary.clone()),
+            security_action: security_result.action.as_str().to_string(),
+            sanitized: if security_result.sanitized { 1 } else { 0 },
+            blocked_reason: security_result.blocked_reason.clone(),
+        };
+        let log_id = log.id.clone();
+        let _ = repo.create_log(&log).await;
+        let _ = repo.create_security_findings(&log_id, &security_result.findings, security_result.action.as_str()).await;
+        return Err((451, security_result.summary));
+    }
 
     let channels = repo.get_enabled_channels().await.map_err(|e| (500, format!("DB error: {}", e)))?;
     if channels.is_empty() {
@@ -40,7 +88,7 @@ pub async fn handle_request(
 
     let request = ProxyRequest {
         model: model.clone(),
-        body: body.clone(),
+        body: forward_body.clone(),
         stream: is_stream,
     };
 
@@ -73,6 +121,19 @@ pub async fn handle_request(
 
         match result {
             Ok((status, resp_body, usage)) => {
+                // Scan response for risks
+                let resp_security = security::scan_response(&resp_body, &security_settings);
+                let resp_findings_count = resp_security.findings.len();
+                if resp_findings_count > 0 {
+                    // Merge response findings into request findings for logging
+                    security_result.findings.extend(resp_security.findings);
+                    if resp_security.risk_level.rank() > security_result.risk_level.rank() {
+                        security_result.risk_level = resp_security.risk_level;
+                        security_result.risk_score = security_result.risk_score.max(resp_security.risk_score);
+                        security_result.summary = format!("{} | 响应侧: {}", security_result.summary, resp_security.summary);
+                    }
+                }
+
                 let log = RequestLog {
                     id: utils::id::new_id(),
                     seq: None,
@@ -93,8 +154,16 @@ pub async fn handle_request(
                     is_retry,
                     created_at: utils::time::now_iso(),
                     request_body: request_body.clone(),
+                    risk_level: security_result.risk_level.as_str().to_string(),
+                    risk_score: security_result.risk_score as i64,
+                    risk_summary: Some(security_result.summary.clone()),
+                    security_action: security_result.action.as_str().to_string(),
+                    sanitized: if security_result.sanitized { 1 } else { 0 },
+                    blocked_reason: security_result.blocked_reason.clone(),
                 };
+                let log_id = log.id.clone();
                 let _ = repo.create_log(&log).await;
+                let _ = repo.create_security_findings(&log_id, &security_result.findings, security_result.action.as_str()).await;
 
                 if let Some(ref u) = usage {
                     let _ = repo.increment_quota(api_key_id, u.total_tokens as i64).await;
@@ -130,8 +199,16 @@ pub async fn handle_request(
                     is_retry,
                     created_at: utils::time::now_iso(),
                     request_body: request_body.clone(),
+                    risk_level: security_result.risk_level.as_str().to_string(),
+                    risk_score: security_result.risk_score as i64,
+                    risk_summary: Some(security_result.summary.clone()),
+                    security_action: security_result.action.as_str().to_string(),
+                    sanitized: if security_result.sanitized { 1 } else { 0 },
+                    blocked_reason: security_result.blocked_reason.clone(),
                 };
+                let log_id = log.id.clone();
                 let _ = repo.create_log(&log).await;
+                let _ = repo.create_security_findings(&log_id, &security_result.findings, security_result.action.as_str()).await;
                 last_error = Some(error_message);
             }
         }

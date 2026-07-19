@@ -1,14 +1,26 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { logApi } from "../lib/api";
-import type { RequestLog } from "../types";
+import type { RequestLog, SecurityFinding } from "../types";
 import { formatTime, formatDuration, formatNumber } from "../lib/constants";
 import {
   ScrollText, RefreshCw, Trash2, ChevronDown, ChevronRight, AlertCircle,
   Bot, User, Wrench, Terminal, Eye, FileCode2, Image, ArrowRightLeft, Shield, Timer, Coins,
-  Search, X, Calendar, Key, Server, Box,
+  Search, X, Calendar, Key, Server, Box, ShieldAlert,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
+
+const RISK_META: Record<string, { label: string; cls: string }> = {
+  clean: { label: "安全", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  info: { label: "提示", cls: "bg-slate-50 text-slate-600 border-slate-200" },
+  low: { label: "低风险", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+  medium: { label: "中风险", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  high: { label: "高风险", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+  critical: { label: "严重", cls: "bg-red-50 text-red-700 border-red-200" },
+};
+function getRiskMeta(level?: string) {
+  return RISK_META[level || "clean"] || RISK_META.clean;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -307,6 +319,7 @@ export function LogsPage() {
                       <th className="w-24 px-3 py-3 text-left font-medium">渠道</th>
                       <th className="px-3 py-3 text-left font-medium">模型</th>
                       <th className="w-20 px-3 py-3 text-left font-medium">状态</th>
+                      <th className="w-24 px-3 py-3 text-left font-medium">安全</th>
                       <th className="w-20 px-3 py-3 text-right font-medium">Token</th>
                       <th className="w-20 px-3 py-3 text-right font-medium">耗时</th>
                       <th className="w-10 px-3 py-3"></th>
@@ -403,6 +416,9 @@ function LogRow({
             {log.is_retry && <span className="text-amber-400 text-[10px]">retry</span>}
           </div>
         </td>
+        <td className="px-3 py-2.5 text-xs">
+          <RiskBadge log={log} />
+        </td>
         <td className="px-3 py-2.5 text-right text-xs">
           <span title={`Prompt: ${log.prompt_tokens}, Completion: ${log.completion_tokens}`}>
             {log.total_tokens > 0 ? formatNumber(log.total_tokens) : <span className="text-muted-foreground/50">0</span>}
@@ -421,7 +437,7 @@ function LogRow({
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={10} className="px-4 py-4 bg-slate-50/80 border-b border-border">
+          <td colSpan={11} className="px-4 py-4 bg-slate-50/80 border-b border-border">
             <LogDetail log={log} />
           </td>
         </tr>
@@ -430,10 +446,30 @@ function LogRow({
   );
 }
 
+
+function RiskBadge({ log }: { log: RequestLog }) {
+  const meta = getRiskMeta(log.risk_level);
+  return (
+    <span title={log.risk_summary || undefined} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+      <ShieldAlert size={10} />
+      {meta.label}{log.risk_score > 0 ? ` ${log.risk_score}` : ""}
+    </span>
+  );
+}
+
 // ─── LogDetail ────────────────────────────────────────────────────────────────
 
 function LogDetail({ log }: { log: RequestLog }) {
   const [jsonExpanded, setJsonExpanded] = useState(false);
+  const [findings, setFindings] = useState<SecurityFinding[]>([]);
+
+  useEffect(() => {
+    if (log.risk_score > 0) {
+      logApi.getSecurityFindings(log.id).then(setFindings).catch(() => setFindings([]));
+    } else {
+      setFindings([]);
+    }
+  }, [log.id, log.risk_score]);
 
   // Parse request body
   let parsed: Record<string, unknown> | null = null;
@@ -551,6 +587,44 @@ function LogDetail({ log }: { log: RequestLog }) {
           </div>
         </div>
       </div>
+
+      {/* ── Security Summary ── */}
+      {(log.risk_score > 0 || log.risk_summary) && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={15} className="text-amber-500" />
+              <span className="text-sm font-semibold text-slate-800">安全审计</span>
+              <RiskBadge log={log} />
+              <span className="rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] text-slate-500">动作: {log.security_action}</span>
+            </div>
+            {log.sanitized && <span className="text-xs text-blue-600">已脱敏</span>}
+          </div>
+          <p className="mt-2 text-xs text-slate-600">{log.risk_summary || "未发现明显风险"}</p>
+          {log.blocked_reason && <p className="mt-1 text-xs text-red-600">阻断原因：{log.blocked_reason}</p>}
+          {findings.length > 0 && (
+            <div className="mt-3 space-y-2 max-h-[240px] overflow-y-auto pr-1">
+              {findings.map(f => {
+                const meta = getRiskMeta(f.severity);
+                return (
+                  <div key={f.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
+                      <span className="font-medium text-slate-800">{f.title}</span>
+                      <span className="font-mono text-[10px] text-slate-400">{f.rule_id}</span>
+                    </div>
+                    {f.description && <div className="mt-1 text-slate-500">{f.description}</div>}
+                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                      {f.location && <span>位置：{f.location}</span>}
+                      {f.evidence_masked && <span>证据：{f.evidence_masked}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Tool Tags ── */}
       {allToolNames.length > 0 && (

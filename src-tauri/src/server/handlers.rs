@@ -10,6 +10,7 @@ use crate::core::proxy;
 use crate::db::repository::Repository;
 use crate::adaptor::{get_adaptor, ProxyRequest};
 use crate::core::dispatcher::Dispatcher;
+use crate::security;
 
 pub async fn handle_chat_completions(
     State(shared): State<SharedState>,
@@ -93,8 +94,56 @@ async fn handle_stream(
     request_body: String,
 ) -> Response {
     let model = json.get("model").and_then(|m| m.as_str()).unwrap_or("").to_string();
+    let security_settings = security::get_security_settings(&shared.app);
+    let security_result = security::scan_request(&json, &security_settings);
+
+    // Real redaction: if redact mode is active, sanitize the request body before forwarding
+    let (forward_json, was_redacted) = if matches!(security_result.action, security::SecurityAction::Redact) || security_settings.redact_secrets {
+        security::redact_request_body(&json, &security_settings)
+    } else {
+        (json.clone(), false)
+    };
+    let mut security_result = security_result;
+    if was_redacted {
+        security_result.sanitized = true;
+    }
 
     let repo = std::sync::Arc::new(Repository::new(shared.state.db.pool.clone()));
+
+    if matches!(security_result.action, security::SecurityAction::Block) {
+        let log = crate::db::models::RequestLog {
+            id: crate::utils::id::new_id(),
+            seq: None,
+            api_key_id: Some(api_key_id),
+            api_key_name: Some(api_key_name),
+            channel_id: None,
+            channel_name: None,
+            model: model.clone(),
+            upstream_model: None,
+            mode: "chat".to_string(),
+            status_code: 451,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            duration_ms: 0,
+            error_message: security_result.blocked_reason.clone(),
+            is_stream: 1,
+            is_retry: 0,
+            created_at: crate::utils::time::now_iso(),
+            request_body: Some(request_body),
+            risk_level: security_result.risk_level.as_str().to_string(),
+            risk_score: security_result.risk_score as i64,
+            risk_summary: Some(security_result.summary.clone()),
+            security_action: security_result.action.as_str().to_string(),
+            sanitized: if security_result.sanitized { 1 } else { 0 },
+            blocked_reason: security_result.blocked_reason.clone(),
+        };
+        let log_id = log.id.clone();
+        let _ = repo.create_log(&log).await;
+        let _ = repo.create_security_findings(&log_id, &security_result.findings, security_result.action.as_str()).await;
+        let err_body = serde_json::json!({"error": {"message": security_result.summary, "type": "security_blocked", "code": "security.blocked"}});
+        return (StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS, Json(err_body)).into_response();
+    }
     let channels = match repo.get_enabled_channels().await {
         Ok(c) => c,
         Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "No channels available").into_response(),
@@ -107,7 +156,7 @@ async fn handle_stream(
 
     let request = ProxyRequest {
         model: model.clone(),
-        body: json.clone(),
+        body: forward_json.clone(),
         stream: true,
     };
 
@@ -152,6 +201,7 @@ async fn handle_stream(
                 let model_clone = model.clone();
                 let upstream_model_clone = upstream_model.clone();
                 let request_body_clone = request_body.clone();
+                let security_result_clone = security_result.clone();
                 let is_retry = if attempt > 0 { 1 } else { 0 };
 
                 // ── Raw byte passthrough with usage parsing ───────────────
@@ -198,7 +248,7 @@ async fn handle_stream(
                     // Log after stream completes
                     let quota_to_add = usage_total;
                     let key_id_for_quota = api_key_id_clone.clone();
-                    let _ = repo_clone.create_log(&crate::db::models::RequestLog {
+                    let log = crate::db::models::RequestLog {
                         id: crate::utils::id::new_id(),
                         seq: None,
                         api_key_id: Some(api_key_id_clone),
@@ -218,7 +268,16 @@ async fn handle_stream(
                         is_retry,
                         created_at: crate::utils::time::now_iso(),
                         request_body: Some(request_body_clone),
-                    }).await;
+                        risk_level: security_result_clone.risk_level.as_str().to_string(),
+                        risk_score: security_result_clone.risk_score as i64,
+                        risk_summary: Some(security_result_clone.summary.clone()),
+                        security_action: security_result_clone.action.as_str().to_string(),
+                        sanitized: if security_result_clone.sanitized { 1 } else { 0 },
+                        blocked_reason: security_result_clone.blocked_reason.clone(),
+                    };
+                    let log_id = log.id.clone();
+                    let _ = repo_clone.create_log(&log).await;
+                    let _ = repo_clone.create_security_findings(&log_id, &security_result_clone.findings, security_result_clone.action.as_str()).await;
 
                     // Increment quota if we got token counts
                     if quota_to_add > 0 {
@@ -236,7 +295,7 @@ async fn handle_stream(
             }
             Err(e) => {
                 let error_message = e.to_string();
-                let _ = repo.create_log(&crate::db::models::RequestLog {
+                let log = crate::db::models::RequestLog {
                     id: crate::utils::id::new_id(),
                     seq: None,
                     api_key_id: Some(api_key_id.clone()),
@@ -256,7 +315,16 @@ async fn handle_stream(
                     is_retry: if attempt > 0 { 1 } else { 0 },
                     created_at: crate::utils::time::now_iso(),
                     request_body: Some(request_body.clone()),
-                }).await;
+                    risk_level: security_result.risk_level.as_str().to_string(),
+                    risk_score: security_result.risk_score as i64,
+                    risk_summary: Some(security_result.summary.clone()),
+                    security_action: security_result.action.as_str().to_string(),
+                    sanitized: if security_result.sanitized { 1 } else { 0 },
+                    blocked_reason: security_result.blocked_reason.clone(),
+                };
+                let log_id = log.id.clone();
+                let _ = repo.create_log(&log).await;
+                let _ = repo.create_security_findings(&log_id, &security_result.findings, security_result.action.as_str()).await;
                 last_error = Some(format!("{}: {}", channel.name, error_message));
             }
         }

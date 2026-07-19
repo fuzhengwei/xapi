@@ -4,6 +4,7 @@ mod adaptor;
 mod server;
 mod db;
 mod utils;
+mod security;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -127,6 +128,7 @@ pub fn run() {
             commands::api_key::delete_api_key,
             commands::log::get_logs,
             commands::log::get_log,
+            commands::log::get_log_security_findings,
             commands::log::delete_log,
             commands::log::delete_logs_before,
             commands::log::delete_all_logs,
@@ -138,6 +140,14 @@ pub fn run() {
             commands::settings::set_auto_start,
             commands::server::get_server_status,
             commands::server::restart_server,
+            commands::security::get_builtin_security_rules,
+            commands::security::update_builtin_security_rule,
+            commands::security::delete_builtin_security_rule,
+            commands::security::reset_builtin_security_rules,
+            commands::security::get_custom_security_rules,
+            commands::security::create_custom_security_rule,
+            commands::security::toggle_custom_security_rule,
+            commands::security::delete_custom_security_rule,
         ])
         .build(tauri::generate_context!())
         .expect("error while building WaLiAPI")
