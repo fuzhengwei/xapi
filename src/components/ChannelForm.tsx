@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { channelApi } from "../lib/api";
 import type { Channel, CreateChannelInput } from "../types";
 import { CHANNEL_TYPES, CHANNEL_CATEGORIES } from "../lib/constants";
-import { X, Plus, Check } from "lucide-react";
+import { X, Plus, Check, ArrowRight, ChevronDown } from "lucide-react";
 
 export function ChannelForm({ editing, onClose, onSaved }: {
   editing: Channel | null;
@@ -17,9 +17,25 @@ export function ChannelForm({ editing, onClose, onSaved }: {
     models: editing?.models || ["gpt-4o-mini"],
     priority: editing?.priority ?? 0,
     weight: editing?.weight ?? 1,
+    model_mapping: editing?.model_mapping || {},
   });
   const [modelInput, setModelInput] = useState("");
   const [showTypePicker, setShowTypePicker] = useState(false);
+
+  // Model mapping state: array of { from, to } pairs
+  const [mappings, setMappings] = useState<{ from: string; to: string }[]>(() => {
+    const raw = editing?.model_mapping || {};
+    return Object.entries(raw).map(([from, to]) => ({ from, to }));
+  });
+
+  // Sync mappings back to form.model_mapping whenever they change
+  useEffect(() => {
+    const obj: Record<string, string> = {};
+    mappings.forEach(m => {
+      if (m.from && m.to) obj[m.from] = m.to;
+    });
+    setForm(prev => ({ ...prev, model_mapping: obj }));
+  }, [mappings]);
 
   const onTypeChange = (type: string) => {
     const info = CHANNEL_TYPES.find(t => t.value === type);
@@ -29,6 +45,8 @@ export function ChannelForm({ editing, onClose, onSaved }: {
       base_url: info?.default_base_url || prev.base_url,
       models: info?.models || [],
     }));
+    // Clear mappings when type changes since models change
+    setMappings([]);
     setShowTypePicker(false);
   };
 
@@ -53,6 +71,23 @@ export function ChannelForm({ editing, onClose, onSaved }: {
 
   const removeModel = (m: string) => {
     setForm(prev => ({ ...prev, models: prev.models.filter(x => x !== m) }));
+    // Also remove any mapping that uses this model as source
+    setMappings(prev => prev.filter(map => map.from !== m));
+  };
+
+  // Model mapping helpers
+  const addMapping = () => {
+    if (form.models.length > 0) {
+      setMappings(prev => [...prev, { from: "", to: form.models[0] }]);
+    }
+  };
+
+  const updateMapping = (idx: number, field: "from" | "to", value: string) => {
+    setMappings(prev => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
+  };
+
+  const removeMapping = (idx: number) => {
+    setMappings(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,6 +102,7 @@ export function ChannelForm({ editing, onClose, onSaved }: {
         models: form.models,
         priority: form.priority,
         weight: form.weight,
+        model_mapping: form.model_mapping,
       });
     } else {
       await channelApi.create(form);
@@ -74,14 +110,20 @@ export function ChannelForm({ editing, onClose, onSaved }: {
     onSaved();
   };
 
+  // Available target models for mapping (all channel models, no exclusions — multiple mappings can point to the same target)
+  const getAvailableTargets = (_currentIdx: number) => {
+    return [...form.models];
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="surface w-full max-w-2xl max-h-[92vh] overflow-auto rounded-[28px]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4 sticky top-0 bg-inherit z-20">
           <h2 className="text-lg font-semibold">{editing ? "编辑渠道" : "新建渠道"}</h2>
           <button onClick={onClose} className="action-secondary px-3 py-2"><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 p-5">
+          {/* Name + Type */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium">名称</label>
@@ -144,6 +186,7 @@ export function ChannelForm({ editing, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Base URL */}
           <div>
             <label className="mb-2 block text-sm font-medium">Base URL</label>
             <input
@@ -155,6 +198,7 @@ export function ChannelForm({ editing, onClose, onSaved }: {
             />
           </div>
 
+          {/* API Key */}
           <div>
             <label className="mb-2 block text-sm font-medium">API Key</label>
             <input
@@ -167,6 +211,7 @@ export function ChannelForm({ editing, onClose, onSaved }: {
             />
           </div>
 
+          {/* Models list */}
           <div>
             <label className="mb-2 block text-sm font-medium">模型列表</label>
             <div className="mb-3 flex gap-2">
@@ -193,6 +238,50 @@ export function ChannelForm({ editing, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Model Mapping */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-sm font-medium">模型映射</label>
+              <span className="text-xs text-muted-foreground">左侧填映射名（客户端请求用），右侧选渠道实际模型</span>
+            </div>
+
+            {mappings.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-background/40 px-4 py-6 text-center">
+                <p className="text-sm text-muted-foreground mb-3">尚未配置模型映射</p>
+                <button
+                  type="button"
+                  onClick={addMapping}
+                  disabled={form.models.length === 0}
+                  className="action-secondary inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus size={14} /> 添加映射
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {mappings.map((map, idx) => (
+                  <MappingRow
+                    key={idx}
+                    from={map.from}
+                    to={map.to}
+                    availableTargets={getAvailableTargets(idx)}
+                    onRemove={() => removeMapping(idx)}
+                    onChange={(field, value) => updateMapping(idx, field, value)}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={addMapping}
+                  disabled={form.models.length === 0}
+                  className="action-secondary inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus size={14} /> 添加映射
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Priority + Weight */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium">优先级</label>
@@ -214,6 +303,7 @@ export function ChannelForm({ editing, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Actions */}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="action-secondary">取消</button>
             <button type="submit" className="action-primary">
@@ -222,6 +312,98 @@ export function ChannelForm({ editing, onClose, onSaved }: {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ─── MappingRow ─────────────────────────────────────────────────────────────
+
+function MappingRow({
+  from,
+  to,
+  availableTargets,
+  onRemove,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  availableTargets: string[];
+  onRemove: () => void;
+  onChange: (field: "from" | "to", value: string) => void;
+}) {
+  const [showToPicker, setShowToPicker] = useState(false);
+
+  // Target options: currently selected + available
+  const targetOptions = useMemo(() => {
+    const opts = [...availableTargets];
+    if (to && !opts.includes(to)) opts.unshift(to);
+    return opts;
+  }, [availableTargets, to]);
+
+  return (
+    <div className="flex items-center gap-2 rounded-2xl border border-border bg-background/40 px-3 py-2.5">
+      {/* Left: mapping model name (what client requests) — manual input */}
+      <div className="relative flex-1 min-w-0">
+        <input
+          value={from}
+          onChange={e => onChange("from", e.target.value)}
+          placeholder="映射模型名"
+          className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        />
+      </div>
+
+      {/* Arrow */}
+      <div className="flex items-center justify-center shrink-0">
+        <ArrowRight size={16} className="text-muted-foreground" />
+      </div>
+
+      {/* Right: actual channel model — dropdown */}
+      <div className="relative flex-1 min-w-0">
+        <button
+          type="button"
+          onClick={() => setShowToPicker(!showToPicker)}
+          className="flex w-full items-center justify-between rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+        >
+          <span className={to ? "text-foreground truncate" : "text-muted-foreground"}>
+            {to || "选择渠道模型"}
+          </span>
+          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+        </button>
+
+        {showToPicker && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowToPicker(false)} />
+            <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-2xl border border-border bg-white p-2 shadow-xl max-h-[260px] overflow-auto">
+              <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">渠道模型</div>
+              {targetOptions.map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { onChange("to", m); setShowToPicker(false); }}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-mono transition-all ${
+                    to === m
+                      ? "bg-primary/8 text-primary font-semibold"
+                      : "text-foreground hover:bg-muted/60"
+                  }`}
+                >
+                  {m}
+                  {to === m && <Check size={14} />}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Remove button */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 rounded-xl p-2 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/8 transition-colors"
+        title="删除此映射"
+      >
+        <X size={16} />
+      </button>
     </div>
   );
 }

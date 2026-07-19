@@ -3,7 +3,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { channelApi, apiKeyApi, serverApi } from "../lib/api";
 import type { Channel, ApiKey, ServerStatus } from "../types";
-import { BookOpen, Copy, Check, Play, Loader2, Link2, KeyRound, Bot } from "lucide-react";
+import { BookOpen, Copy, Check, Play, Loader2, Link2, KeyRound, Bot, ChevronDown } from "lucide-react";
 
 type Platform = "curl-mac" | "curl-windows" | "javascript" | "typescript" | "java";
 type TestState = "idle" | "running" | "success" | "error";
@@ -35,7 +35,12 @@ export function UsagePage() {
       setChannels(ch as Channel[]); setKeys(ks as ApiKey[]); setSs(s as ServerStatus | null);
       if ((ks as ApiKey[]).length > 0) setSelKey((ks as ApiKey[])[0].key);
       const ms: string[] = [];
-      (ch as Channel[]).forEach(c => c.models.forEach(m => { if (!ms.includes(m)) ms.push(m); }));
+      (ch as Channel[]).forEach(c => {
+        c.models.forEach(m => { if (!ms.includes(m)) ms.push(m); });
+        if (c.model_mapping) {
+          Object.keys(c.model_mapping).forEach(from => { if (!ms.includes(from)) ms.push(from); });
+        }
+      });
       if (ms.length > 0) setSelModel(ms[0]);
     });
     const iv = setInterval(() => serverApi.getStatus().then(setSs).catch(() => {}), 5000);
@@ -43,7 +48,25 @@ export function UsagePage() {
   }, []);
 
   const baseUrl = ss?.running ? `${ss.url}/v1` : "http://127.0.0.1:8777/v1";
-  const models = useMemo(() => { const ms: string[] = []; channels.forEach(c => c.models.forEach(m => { if (!ms.includes(m)) ms.push(m); })); return ms; }, [channels]);
+  const modelList = useMemo(() => {
+    const seen = new Set<string>();
+    const real: string[] = [];
+    const mapped: string[] = [];
+    channels.forEach(c => {
+      c.models.forEach(m => {
+        if (!seen.has(m)) { seen.add(m); real.push(m); }
+      });
+      if (c.model_mapping) {
+        Object.keys(c.model_mapping).forEach(from => {
+          // from = mapping name (what client requests)
+          if (!seen.has(from)) { seen.add(from); mapped.push(from); }
+        });
+      }
+    });
+    return { real, mapped };
+  }, [channels]);
+
+  const models = useMemo(() => [...modelList.real, ...modelList.mapped], [modelList]);
 
   const copy = (text: string, id: string) => { navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 2000); };
 
@@ -162,10 +185,22 @@ public class XapiTest {
             <div className="surface-soft rounded-2xl p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600"><Bot size={14} /> Model</div>
               <div className="flex gap-2">
-                <select value={selModel} onChange={e => setSelModel(e.target.value)} className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-mono text-slate-900 shadow-sm">
-                  {models.length === 0 && <option value="">请先配置渠道</option>}
-                  {models.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <div className="relative flex-1">
+                  <select value={selModel} onChange={e => setSelModel(e.target.value)} className="flex-1 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-9 text-sm font-mono text-slate-900 shadow-sm cursor-pointer">
+                    {models.length === 0 && <option value="">请先配置渠道</option>}
+                    {modelList.real.length > 0 && (
+                      <optgroup label="实际模型">
+                        {modelList.real.map(m => <option key={m} value={m}>{m}</option>)}
+                      </optgroup>
+                    )}
+                    {modelList.mapped.length > 0 && (
+                      <optgroup label="映射模型">
+                        {modelList.mapped.map(m => <option key={m} value={m}>{m}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
                 <button onClick={() => selModel && copy(selModel, "model")} disabled={!selModel} className="action-secondary px-3 py-2 disabled:opacity-50">
                   {copied === "model" ? <Check size={16} className="text-emerald-700" /> : <Copy size={16} />}
                 </button>

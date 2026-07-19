@@ -290,6 +290,20 @@ pub async fn handle_list_models(State(shared): State<SharedState>) -> Response {
                         }));
                     }
                 }
+                // Also expose mapped model names (mapping keys)
+                let mapping: serde_json::Value =
+                    serde_json::from_str(&ch.model_mapping).unwrap_or(serde_json::Value::Object(Default::default()));
+                if let Some(obj) = mapping.as_object() {
+                    for key in obj.keys() {
+                        if seen.insert(key.clone()) {
+                            models.push(serde_json::json!({
+                                "id": key, "object": "model",
+                                "created": chrono::Utc::now().timestamp(),
+                                "owned_by": ch.channel_type,
+                            }));
+                        }
+                    }
+                }
             }
             Json(serde_json::json!({ "object": "list", "data": models })).into_response()
         }

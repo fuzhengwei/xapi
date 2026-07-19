@@ -83,13 +83,27 @@ export function ChannelsPage() {
                       {ch.base_url}
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {ch.models.slice(0, 6).map(m => (
-                        <span key={m} className="rounded-full bg-primary/12 px-2.5 py-1 text-xs text-primary">
-                          {m}
-                        </span>
-                      ))}
-                      {ch.models.length > 6 && <span className="px-1 text-xs text-muted-foreground">+{ch.models.length - 6}</span>}
+                    {/* 可用模型 + 映射模型 */}
+                    <div className="mt-4">
+                      <div className="mb-2 text-xs font-semibold text-foreground/70">可用模型</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ch.models.map(m => (
+                          <span key={m} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-900">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                      {/* 映射模型名（客户端请求时使用的名字）*/}
+                      {ch.model_mapping && Object.keys(ch.model_mapping).length > 0 && (
+                        <>
+                          <div className="mb-2 mt-3 text-xs font-semibold text-foreground/70">映射模型</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.keys(ch.model_mapping).map(name => (
+                              <span key={name} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-900">{name}</span>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">

@@ -61,6 +61,16 @@ pub async fn handle_request(
         let duration_ms = attempt_start.elapsed().as_millis() as u64;
         let is_retry = if attempt > 0 { 1 } else { 0 };
 
+        // Compute the actual upstream model after mapping
+        let upstream_model = {
+            let mapping = &config.model_mapping;
+            if let Some(mapped) = mapping.get(model.as_str()).and_then(|v| v.as_str()) {
+                mapped.to_string()
+            } else {
+                model.clone()
+            }
+        };
+
         match result {
             Ok((status, resp_body, usage)) => {
                 let log = RequestLog {
@@ -71,7 +81,7 @@ pub async fn handle_request(
                     channel_id: Some(channel.id.clone()),
                     channel_name: Some(channel.name.clone()),
                     model: model.clone(),
-                    upstream_model: Some(model.clone()),
+                    upstream_model: Some(upstream_model.clone()),
                     mode: "chat".to_string(),
                     status_code: status as i64,
                     prompt_tokens: usage.as_ref().map(|u| u.prompt_tokens as i64).unwrap_or(0),
@@ -108,7 +118,7 @@ pub async fn handle_request(
                     channel_id: Some(channel.id.clone()),
                     channel_name: Some(channel.name.clone()),
                     model: model.clone(),
-                    upstream_model: Some(model.clone()),
+                    upstream_model: Some(upstream_model.clone()),
                     mode: "chat".to_string(),
                     status_code: 502,
                     prompt_tokens: 0,
