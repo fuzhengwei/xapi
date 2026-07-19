@@ -239,6 +239,11 @@ impl Repository {
         .bind(&log.request_body)
         .execute(&self.pool)
         .await?;
+        // Backfill seq with rowid for new rows
+        sqlx::query("UPDATE request_logs SET seq = rowid WHERE id = ? AND seq IS NULL")
+            .bind(&log.id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 

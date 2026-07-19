@@ -189,6 +189,7 @@ async fn handle_stream(
                     let key_id_for_quota = api_key_id_clone.clone();
                     let _ = repo_clone.create_log(&crate::db::models::RequestLog {
                         id: crate::utils::id::new_id(),
+                        seq: None,
                         api_key_id: Some(api_key_id_clone),
                         api_key_name: Some(api_key_name_clone),
                         channel_id: Some(channel_id),
@@ -226,6 +227,7 @@ async fn handle_stream(
                 let error_message = e.to_string();
                 let _ = repo.create_log(&crate::db::models::RequestLog {
                     id: crate::utils::id::new_id(),
+                    seq: None,
                     api_key_id: Some(api_key_id.clone()),
                     api_key_name: Some(api_key_name.clone()),
                     channel_id: Some(channel.id.clone()),

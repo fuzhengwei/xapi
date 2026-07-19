@@ -65,6 +65,7 @@ pub async fn handle_request(
             Ok((status, resp_body, usage)) => {
                 let log = RequestLog {
                     id: utils::id::new_id(),
+                    seq: None,
                     api_key_id: Some(api_key_id.to_string()),
                     api_key_name: Some(api_key_name.to_string()),
                     channel_id: Some(channel.id.clone()),
@@ -101,6 +102,7 @@ pub async fn handle_request(
                 let error_message = e.to_string();
                 let log = RequestLog {
                     id: utils::id::new_id(),
+                    seq: None,
                     api_key_id: Some(api_key_id.to_string()),
                     api_key_name: Some(api_key_name.to_string()),
                     channel_id: Some(channel.id.clone()),

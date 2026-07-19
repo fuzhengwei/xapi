@@ -75,6 +75,7 @@ export interface CreateApiKeyInput {
 // Log types
 export interface RequestLog {
   id: string;
+  seq: number | null;
   api_key_name: string | null;
   channel_name: string | null;
   model: string;

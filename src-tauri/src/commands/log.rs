@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogDto {
     pub id: String,
+    pub seq: Option<i64>,
     pub api_key_name: Option<String>,
     pub channel_name: Option<String>,
     pub model: String,
@@ -27,6 +28,7 @@ impl From<RequestLog> for LogDto {
     fn from(l: RequestLog) -> Self {
         LogDto {
             id: l.id,
+            seq: l.seq,
             api_key_name: l.api_key_name,
             channel_name: l.channel_name,
             model: l.model,

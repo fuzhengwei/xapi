@@ -380,7 +380,7 @@ function LogRow({
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </td>
-        <td className="px-2 py-2.5 text-xs text-muted-foreground/60 font-mono whitespace-nowrap">#{log.id}</td>
+        <td className="px-2 py-2.5 text-xs text-muted-foreground/60 font-mono whitespace-nowrap">{log.seq != null ? `#${log.seq}` : "-"}</td>
         <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap overflow-hidden">{formatTime(log.created_at)}</td>
         <td className="px-3 py-2.5 text-xs overflow-hidden truncate">{log.api_key_name || "-"}</td>
         <td className="px-3 py-2.5 text-xs overflow-hidden truncate">{log.channel_name || "-"}</td>

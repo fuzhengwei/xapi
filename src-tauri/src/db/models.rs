@@ -79,6 +79,7 @@ pub struct CreateApiKeyInput {
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct RequestLog {
     pub id: String,
+    pub seq: Option<i64>,
     pub api_key_id: Option<String>,
     pub api_key_name: Option<String>,
     pub channel_id: Option<String>,
