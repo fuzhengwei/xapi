@@ -124,6 +124,16 @@ async fn handle_stream(
         let config = Dispatcher::channel_to_config(&channel);
         let adaptor = get_adaptor(&channel.channel_type);
 
+        // Compute the actual upstream model after mapping
+        let upstream_model = {
+            let mapping = &config.model_mapping;
+            if let Some(mapped) = mapping.get(model.as_str()).and_then(|v| v.as_str()) {
+                mapped.to_string()
+            } else {
+                model.clone()
+            }
+        };
+
         match adaptor.forward_stream(&request, &config).await {
             Ok(resp) => {
                 let status = resp.status();
@@ -140,6 +150,7 @@ async fn handle_stream(
                 let api_key_id_clone = api_key_id.clone();
                 let api_key_name_clone = api_key_name.clone();
                 let model_clone = model.clone();
+                let upstream_model_clone = upstream_model.clone();
                 let request_body_clone = request_body.clone();
                 let is_retry = if attempt > 0 { 1 } else { 0 };
 
@@ -195,7 +206,7 @@ async fn handle_stream(
                         channel_id: Some(channel_id),
                         channel_name: Some(channel_name),
                         model: model_clone.clone(),
-                        upstream_model: Some(model_clone),
+                        upstream_model: Some(upstream_model_clone),
                         mode: "chat".to_string(),
                         status_code: if had_error { 502 } else { 200 },
                         prompt_tokens: usage_prompt,
@@ -233,7 +244,7 @@ async fn handle_stream(
                     channel_id: Some(channel.id.clone()),
                     channel_name: Some(channel.name.clone()),
                     model: model.clone(),
-                    upstream_model: Some(model.clone()),
+                    upstream_model: Some(upstream_model.clone()),
                     mode: "chat".to_string(),
                     status_code: 502,
                     prompt_tokens: 0,
