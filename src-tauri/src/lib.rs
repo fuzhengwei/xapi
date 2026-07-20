@@ -1,6 +1,8 @@
 // WaLiAPI - 本地 LLM API 网关
 // 第2-4节：前端页面开发
 mod adaptor;
+
+use tauri::Manager;
 mod commands;
 mod core;
 mod db;
