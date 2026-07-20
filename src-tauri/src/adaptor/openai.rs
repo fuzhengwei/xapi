@@ -93,7 +93,7 @@ impl Adaptor for OpenAIAdaptor {
 
 pub fn apply_model_mapping(body: &serde_json::Value, mapping: &serde_json::Value) -> serde_json::Value {
     if mapping.is_null() || !mapping.is_object() {
-        return body.clone();
+        return sanitize_messages(body.clone());
     }
     let mut body = body.clone();
     if let Some(model) = body.get("model").and_then(|m| m.as_str()) {
@@ -101,5 +101,64 @@ pub fn apply_model_mapping(body: &serde_json::Value, mapping: &serde_json::Value
             body["model"] = serde_json::Value::String(mapped.to_string());
         }
     }
+    sanitize_messages(body)
+}
+
+/// Remove or fix assistant messages with empty content.
+///
+/// Some upstream APIs (e.g. DeepSeek, OpenAI) reject requests when an
+/// assistant message in the `messages` array has empty content. This can
+/// happen when a downstream client (e.g. OpenClaw, ChatBox) accumulates
+/// long conversation history that includes interrupted or tool-only
+/// assistant turns.
+///
+/// Rules:
+/// - If an assistant message has `content` that is null, empty string, or
+///   an empty array, and has no `tool_calls`, it is removed entirely.
+/// - If an assistant message has empty `content` but has `tool_calls`, the
+///   content is set to `null` (which most APIs accept) instead of empty string.
+/// - Consecutive messages with the same role are not merged (leave that to
+///   the upstream API or a future enhancement).
+pub fn sanitize_messages(mut body: serde_json::Value) -> serde_json::Value {
+    let messages = match body.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        Some(arr) => arr,
+        None => return body,
+    };
+
+    messages.retain(|msg| {
+        let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+        if role != "assistant" {
+            return true;
+        }
+
+        let content = msg.get("content");
+        let is_empty_content = match content {
+            None => true,
+            Some(serde_json::Value::Null) => true,
+            Some(serde_json::Value::String(s)) => s.is_empty(),
+            Some(serde_json::Value::Array(a)) => a.is_empty(),
+            _ => false,
+        };
+
+        let has_tool_calls = msg
+            .get("tool_calls")
+            .and_then(|t| t.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
+
+        if is_empty_content && !has_tool_calls {
+            // Drop empty assistant messages without tool calls
+            false
+        } else if is_empty_content && has_tool_calls {
+            // Keep but normalize content to null
+            if let Some(obj) = msg.as_object_mut() {
+                obj.insert("content".to_string(), serde_json::Value::Null);
+            }
+            true
+        } else {
+            true
+        }
+    });
+
     body
 }

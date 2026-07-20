@@ -77,6 +77,17 @@ fn convert_openai_to_gemini(body: &serde_json::Value) -> serde_json::Value {
                 "parts": [{"text": content}]
             }));
         } else {
+            // Skip empty assistant messages without tool_calls
+            if role == "assistant" && content.is_empty() {
+                let has_tool_calls = msg
+                    .get("tool_calls")
+                    .and_then(|t| t.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
+                if !has_tool_calls {
+                    continue;
+                }
+            }
             contents.push(serde_json::json!({
                 "role": if role == "assistant" { "model" } else { "user" },
                 "parts": [{"text": content}]

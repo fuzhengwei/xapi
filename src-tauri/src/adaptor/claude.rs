@@ -134,6 +134,23 @@ fn convert_openai_messages_to_claude(messages: &serde_json::Value) -> (Option<St
                 system = Some(s.to_string());
             }
         } else {
+            // Skip empty assistant messages without tool_calls
+            if role == "assistant" {
+                let is_empty = match &content {
+                    serde_json::Value::Null => true,
+                    serde_json::Value::String(s) => s.is_empty(),
+                    serde_json::Value::Array(a) => a.is_empty(),
+                    _ => false,
+                };
+                let has_tool_calls = msg
+                    .get("tool_calls")
+                    .and_then(|t| t.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
+                if is_empty && !has_tool_calls {
+                    continue;
+                }
+            }
             claude_msgs.push(serde_json::json!({
                 "role": if role == "assistant" { "assistant" } else { "user" },
                 "content": content,
