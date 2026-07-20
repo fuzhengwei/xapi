@@ -1,6 +1,8 @@
 // WaLiAPI - 本地 LLM API 网关
 // 第1-5节：负载均衡调度器
 mod adaptor;
+
+use tauri::Manager;
 mod core;
 mod commands;
 mod db;
