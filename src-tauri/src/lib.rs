@@ -1,5 +1,5 @@
 // WaLiAPI - 本地 LLM API 网关
-// 第2-3节：安全规则与数据脱敏
+// 第2-4节：前端页面开发
 mod adaptor;
 mod commands;
 mod core;
@@ -86,6 +86,17 @@ pub fn run() {
             commands::security::create_custom_security_rule,
             commands::security::toggle_custom_security_rule,
             commands::security::delete_custom_security_rule,
+            commands::settings::get_settings,
+            commands::settings::save_settings,
+            commands::settings::apply_theme,
+            commands::settings::set_auto_start,
+            commands::import_export::export_channels,
+            commands::import_export::import_walicode_backup,
+            commands::import_export::import_waliapi_export,
+            commands::import_export::scan_local_ai_configs,
+            commands::import_export::import_scanned_sources,
+            commands::import_export::pick_import_file,
+            commands::import_export::save_export_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running WaLiAPI");
