@@ -1,4 +1,6 @@
 pub mod openai;
+pub mod claude;
+pub mod gemini;
 pub mod deepseek;
 pub mod custom;
 
@@ -60,6 +62,8 @@ pub fn get_adaptor(channel_type: &str) -> Box<dyn Adaptor> {
     match channel_type {
         "openai" => Box::new(openai::OpenAIAdaptor),
         "deepseek" => Box::new(deepseek::DeepSeekAdaptor),
+        "claude" => Box::new(claude::ClaudeAdaptor),
+        "gemini" => Box::new(gemini::GeminiAdaptor),
         "custom" => Box::new(custom::CustomAdaptor),
         _ => Box::new(custom::CustomAdaptor),
     }
