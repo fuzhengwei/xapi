@@ -1,6 +1,8 @@
 // WaLiAPI - 本地 LLM API 网关
 // 第2-3节：安全规则与数据脱敏
 mod adaptor;
+
+use tauri::Manager;
 mod commands;
 mod core;
 mod db;
