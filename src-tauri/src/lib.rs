@@ -1,6 +1,8 @@
 // WaLiAPI - 本地 LLM API 网关
 // 第1-7节：HTTP服务器与SSE流式
 mod adaptor;
+
+use tauri::Manager;
 mod commands;
 mod core;
 mod db;
