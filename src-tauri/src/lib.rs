@@ -128,6 +128,7 @@ pub fn run() {
             commands::api_key::create_api_key,
             commands::api_key::update_api_key,
             commands::api_key::delete_api_key,
+            commands::api_key::get_api_key_stats,
             commands::log::get_logs,
             commands::log::get_log,
             commands::log::get_log_security_findings,

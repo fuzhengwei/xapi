@@ -161,6 +161,7 @@ export function LogsPage() {
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCleanModal, setShowCleanModal] = useState(false);
+  const [showTraceColumn, setShowTraceColumn] = useState(false);
 
   // Search filters
   const [showSearch, setShowSearch] = useState(false);
@@ -239,7 +240,7 @@ export function LogsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 px-7 pt-7 pb-4 shrink-0">
         <div>
-          <h1 className="text-[28px] font-bold leading-tight tracking-tight">请求/响应日志</h1>
+          <h1 className="text-[28px] font-bold leading-tight tracking-tight">审计日志</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">查看请求结果、Token 消耗、工具调用与网关路由详情</p>
         </div>
         <div className="flex items-center gap-2">
@@ -366,7 +367,7 @@ export function LogsPage() {
           {logs.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
               <ScrollText className="h-12 w-12 text-muted-foreground/70" />
-              <p className="text-base font-medium">暂无请求/响应日志</p>
+              <p className="text-base font-medium">暂无审计日志</p>
               <p className="text-sm text-muted-foreground">当有模型请求经过网关后，这里会显示调用记录</p>
             </div>
           ) : (
@@ -378,8 +379,8 @@ export function LogsPage() {
                     <tr>
                       <th className="w-8 px-2 py-3"></th>
                       <th className="w-12 px-2 py-3 text-left font-medium">#</th>
-                      <th className="w-28 px-2 py-3 text-left font-medium">时间</th>
-                      <th className="w-28 px-2 py-3 text-left font-medium">Trace ID</th>
+                      <th className="w-36 px-2 py-3 text-left font-medium">时间</th>
+                      {showTraceColumn && <th className="w-28 px-2 py-3 text-left font-medium">Trace ID</th>}
                       <th className="w-24 px-2 py-3 text-left font-medium">密钥</th>
                       <th className="w-20 px-2 py-3 text-left font-medium">渠道</th>
                       <th className="px-2 py-3 text-left font-medium">模型</th>
@@ -387,7 +388,16 @@ export function LogsPage() {
                       <th className="w-28 px-2 py-3 text-right font-medium">安全</th>
                       <th className="w-24 px-2 py-3 text-right font-medium">Token</th>
                       <th className="w-16 px-2 py-3 text-right font-medium">耗时</th>
-                      <th className="w-10 px-2 py-3"></th>
+                      <th className="w-20 px-2 py-3">
+                        <button
+                          onClick={() => setShowTraceColumn(!showTraceColumn)}
+                          className={`flex items-center gap-1 text-[11px] font-medium transition-colors whitespace-nowrap ${showTraceColumn ? "text-blue-500" : "text-slate-400 hover:text-slate-600"}`}
+                          title={showTraceColumn ? "隐藏 Trace ID 列" : "显示 Trace ID 列"}
+                        >
+                          {showTraceColumn ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          <span>更多</span>
+                        </button>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -398,6 +408,7 @@ export function LogsPage() {
                         expanded={expandedId === log.id}
                         onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)}
                         onDelete={() => handleDeleteLog(log.id)}
+                        showTraceColumn={showTraceColumn}
                       />
                     ))}
                   </tbody>
@@ -444,11 +455,13 @@ function LogRow({
   expanded,
   onToggle,
   onDelete,
+  showTraceColumn,
 }: {
   log: RequestLog;
   expanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  showTraceColumn: boolean;
 }) {
   return (
     <>
@@ -460,7 +473,9 @@ function LogRow({
         </td>
         <td className="px-2 py-2.5 text-xs text-muted-foreground/60 font-mono whitespace-nowrap">{log.seq != null ? `#${log.seq}` : "-"}</td>
         <td className="px-2 py-2.5 text-xs text-muted-foreground whitespace-nowrap overflow-hidden">{formatTime(log.created_at)}</td>
-        <td className="px-2 py-2.5 text-xs font-mono text-slate-500 whitespace-nowrap overflow-hidden truncate max-w-[180px]" title={log.trace_id || undefined}>{log.trace_id || "-"}</td>
+        {showTraceColumn && (
+          <td className="px-2 py-2.5 text-xs font-mono text-slate-500 whitespace-nowrap overflow-hidden truncate max-w-[180px]" title={log.trace_id || undefined}>{log.trace_id || "-"}</td>
+        )}
         <td className="px-2 py-2.5 text-xs overflow-hidden truncate">{log.api_key_name || "-"}</td>
         <td className="px-2 py-2.5 text-xs overflow-hidden truncate">{log.channel_name || "-"}</td>
         <td className="px-2 py-2.5 text-[13px] font-mono overflow-hidden truncate">

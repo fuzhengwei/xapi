@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Channel, CreateChannelInput, UpdateChannelInput, TestChannelResult,
-  ApiKey, CreateApiKeyInput,
+  ApiKey, CreateApiKeyInput, ApiKeyStats,
   RequestLog, LogStats, SecurityFinding,
   DashboardStats,
   Settings,
@@ -40,6 +40,7 @@ export const apiKeyApi = {
   create: (input: CreateApiKeyInput) => invoke<ApiKey>("create_api_key", { input }),
   update: (id: string, status?: number) => invoke<void>("update_api_key", { input: { id, status } }),
   delete: (id: string) => invoke<void>("delete_api_key", { id }),
+  getStats: () => invoke<ApiKeyStats[]>("get_api_key_stats"),
 };
 
 export interface GetLogsInput {

@@ -72,6 +72,18 @@ export interface CreateApiKeyInput {
   expires_at?: string;
 }
 
+export interface ApiKeyStats {
+  api_key_id: string;
+  total_calls: number;
+  success_calls: number;
+  failed_calls: number;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  avg_latency_ms: number;
+  last_call_at: string | null;
+}
+
 // Log types
 export interface RequestLog {
   id: string;
