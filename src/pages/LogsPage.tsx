@@ -860,7 +860,7 @@ function LogDetail({ log }: { log: RequestLog }) {
                     const role = (msg.role as string) || "unknown";
                     const meta = getRoleMeta(role);
                     const Icon = meta.icon;
-                    const toolNames = extractToolNames(msg);
+                    // const toolNames = extractToolNames(msg);
                     const isExpanded = expandedMessages.has(i);
                     const preview = getContentPreview(msg, 140);
                     // Check if getContentPreview truncated the content
@@ -1151,7 +1151,7 @@ function LogDetail({ log }: { log: RequestLog }) {
                     const role = (message.role as string) || "assistant";
                     const meta = getRoleMeta(role);
                     const Icon = meta.icon;
-                    const toolNames = extractToolNames(message);
+                    // const toolNames = extractToolNames(message);
                     const toolCalls = extractToolCalls(message);
 
                     const content = (message.content as string) || "";
