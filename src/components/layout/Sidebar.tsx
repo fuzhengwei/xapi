@@ -16,7 +16,6 @@ import {
 import { serverApi } from "../../lib/api";
 import type { ServerStatus } from "../../types";
 import packageJson from "../../../package.json";
-import { UpdateChecker } from "../UpdateChecker";
 import { Download } from "lucide-react";
 
 const navItems = [
@@ -31,9 +30,14 @@ const navItems = [
 const githubUrl = "https://github.com/fuzhengwei/WaLiAPI";
 const appVersion = packageJson.version;
 
-export function Sidebar() {
+export function Sidebar({
+  hasUpdate,
+  onCheckUpdate,
+}: {
+  hasUpdate: boolean;
+  onCheckUpdate: () => void;
+}) {
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
-  const [showUpdater, setShowUpdater] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -122,20 +126,31 @@ export function Sidebar() {
         </button>
 
         <button
-          onClick={() => setShowUpdater(true)}
+          onClick={onCheckUpdate}
           className="flex w-full items-center gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-3 text-left text-sm text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white">
+          <span className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white">
             <Download size={17} />
+            {hasUpdate && (
+              <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-rose-500 ring-2 ring-white" />
+              </span>
+            )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block font-medium">检查更新</span>
+            <span className="flex items-center gap-1.5 font-medium">
+              检查更新
+              {hasUpdate && (
+                <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  新版本
+                </span>
+              )}
+            </span>
             <span className="block truncate text-xs text-slate-500">当前版本 v{appVersion}</span>
           </span>
         </button>
       </div>
-
-      {showUpdater && <UpdateChecker onClose={() => setShowUpdater(false)} />}
     </aside>
   );
 }

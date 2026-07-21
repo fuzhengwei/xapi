@@ -67,7 +67,13 @@ async function probeAllSources(): Promise<{
   };
 }
 
-export function UpdateChecker({ onClose }: { onClose?: () => void }) {
+export function UpdateChecker({
+  onClose,
+  onUpdateStarted,
+}: {
+  onClose?: () => void;
+  onUpdateStarted?: () => void;
+}) {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const [currentVersion, setCurrentVersion] = useState("");
   const [probeResults, setProbeResults] = useState<ProbeResult[]>([]);
@@ -120,6 +126,7 @@ export function UpdateChecker({ onClose }: { onClose?: () => void }) {
       stage.kind === "available" || stage.kind === "downloading"
         ? stage.source
         : SOURCES[0];
+    onUpdateStarted?.();
     setStage({ kind: "downloading", source, update, percent: 0 });
     try {
       let downloaded = 0;

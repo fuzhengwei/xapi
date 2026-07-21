@@ -13,6 +13,8 @@ import { settingsApi } from "./lib/api";
 
 function App() {
   const [showUpdater, setShowUpdater] = useState(false);
+  // 全局:是否有新版本可用(用户点"稍后"后仍保留,用于侧边栏红点提示)
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   useEffect(() => {
     settingsApi.get().then((settings) => {
@@ -20,11 +22,14 @@ function App() {
       document.documentElement.lang = settings.ui_language || "zh-CN";
     }).catch(() => {});
 
-    // 启动 5 秒后静默检查更新,发现新版本自动弹出更新窗口
+    // 启动 5 秒后静默检查更新,发现新版本标记 hasUpdate + 弹窗
     const timer = setTimeout(() => {
       check()
         .then((update) => {
-          if (update) setShowUpdater(true);
+          if (update) {
+            setHasUpdate(true);
+            setShowUpdater(true);
+          }
         })
         .catch(() => {
           // 检查失败(网络问题/无 release)时静默忽略,不影响使用
@@ -35,7 +40,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Layout>
+      <Layout hasUpdate={hasUpdate} onCheckUpdate={() => setShowUpdater(true)}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/usage" element={<UsagePage />} />
@@ -45,7 +50,12 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Layout>
-      {showUpdater && <UpdateChecker onClose={() => setShowUpdater(false)} />}
+      {showUpdater && (
+        <UpdateChecker
+          onClose={() => setShowUpdater(false)}
+          onUpdateStarted={() => setHasUpdate(false)}
+        />
+      )}
     </BrowserRouter>
   );
 }
