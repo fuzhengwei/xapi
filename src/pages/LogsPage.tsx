@@ -183,9 +183,12 @@ export function LogsPage() {
       api_key_name: filterApiKey || undefined,
       channel_name: filterChannel || undefined,
       model: filterModel || undefined,
-      date_from: filterDateFrom || undefined,
-      date_to: filterDateTo || undefined,
-      trace_id: filterTraceId || undefined,
+      // created_at 存储为 UTC 完整时间戳（如 2026-07-20T12:34:56.789Z），
+      // 需把本地日期转换为覆盖当天 [00:00, 24:00) 的 UTC 时刻，否则
+      // "created_at <= 'YYYY-MM-DD'" 的字符串比较会漏掉结束日当天的全部日志
+      date_from: filterDateFrom ? new Date(`${filterDateFrom}T00:00:00`).toISOString() : undefined,
+      date_to: filterDateTo ? new Date(`${filterDateTo}T23:59:59.999`).toISOString() : undefined,
+        trace_id: filterTraceId || undefined,
     })
       .then(setLogs)
       .catch(() => {})
@@ -614,7 +617,7 @@ function LogDetail({ log }: { log: RequestLog }) {
       prettyChoices = JSON.stringify(parsedChoices, null, 2);
     }
   } catch { choicesParseError = true; }
-  
+
   const [responseChoicesExpanded, setResponseChoicesExpanded] = useState(
     !parsedChoices || parsedChoices.length <= 5
   );
@@ -1150,19 +1153,19 @@ function LogDetail({ log }: { log: RequestLog }) {
                     const Icon = meta.icon;
                     const toolNames = extractToolNames(message);
                     const toolCalls = extractToolCalls(message);
-                    
+
                     const content = (message.content as string) || "";
                     const reasoningContent = (message.reasoning_content as string) || "";
-                    
+
                     const reasoningExpanded = expandedChoices.has(`${i}-reasoning`);
                     const contentExpanded = expandedChoices.has(`${i}-content`);
-                    
+
                     // Get preview for reasoning content (compact newlines)
                     const reasoningPreview = reasoningContent.replace(/\n+/g, " ").trim();
-                    const reasoningPreviewTruncated = reasoningPreview.length > 200 
-                      ? `${reasoningPreview.slice(0, 200)}…` 
+                    const reasoningPreviewTruncated = reasoningPreview.length > 200
+                      ? `${reasoningPreview.slice(0, 200)}…`
                       : reasoningPreview;
-                    
+
                     const toggleReasoning = () => {
                       const newSet = new Set(expandedChoices);
                       const key = `${i}-reasoning`;
@@ -1170,7 +1173,7 @@ function LogDetail({ log }: { log: RequestLog }) {
                       else newSet.add(key);
                       setExpandedChoices(newSet);
                     };
-                    
+
                     const toggleContent = () => {
                       const newSet = new Set(expandedChoices);
                       const key = `${i}-content`;
