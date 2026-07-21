@@ -16,6 +16,8 @@ import {
 import { serverApi } from "../../lib/api";
 import type { ServerStatus } from "../../types";
 import packageJson from "../../../package.json";
+import { UpdateChecker } from "../UpdateChecker";
+import { Download } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "仪表盘" },
@@ -31,6 +33,7 @@ const appVersion = packageJson.version;
 
 export function Sidebar() {
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [showUpdater, setShowUpdater] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -117,7 +120,22 @@ export function Sidebar() {
           </span>
           <ExternalLink size={14} className="text-slate-400" />
         </button>
+
+        <button
+          onClick={() => setShowUpdater(true)}
+          className="flex w-full items-center gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-3 text-left text-sm text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white">
+            <Download size={17} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">检查更新</span>
+            <span className="block truncate text-xs text-slate-500">当前版本 v{appVersion}</span>
+          </span>
+        </button>
       </div>
+
+      {showUpdater && <UpdateChecker onClose={() => setShowUpdater(false)} />}
     </aside>
   );
 }
