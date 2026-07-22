@@ -1,0 +1,130 @@
+name: Mirror Release to GitCode
+
+# 当 GitHub Release 发布后,自动把产物同步到 gitcode
+# 国内用户访问 gitcode 上的 latest.json,签名用同一把私钥(产物完全一致,签名可复用)
+
+on:
+  release:
+    types: [published]
+
+# 同一 release tag 只同步一次(多平台发布时去重)
+concurrency:
+  group: mirror-gitcode-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 解析 release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
+      - name: 检查 GITCODE_TOKEN
+        id: check
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        run: |
+          if [ -z "$GITCODE_TOKEN" ]; then
+            echo "::warning::未配置 GITCODE_TOKEN,跳过镜像同步"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 下载所有 Release 资产
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mkdir -p assets
+          gh release download "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --dir assets \
+            --clobber
+          echo "下载的文件:"
+          ls -lh assets/
+
+      - name: 上传资产到 gitcode Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          PROJECT_ID="fuzhengwei%2FWaLiAPI"
+          API="https://gitcode.com/api/v4/projects/${PROJECT_ID}"
+
+          # 1. 查找现有 release
+          RELEASE_ID=$(curl -s \
+            -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+            "${API}/releases/${TAG}" | jq -r '.id // empty')
+
+          # 2. 不存在则创建
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "创建 gitcode release: $TAG"
+            CREATE_RESP=$(curl -s -X POST \
+              -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"tag_name\":\"${TAG}\",\"name\":\"WaLiAPI ${TAG}\",\"description\":\"Mirror of GitHub release. 国内用户可从此下载。\"}" \
+              "${API}/releases")
+            RELEASE_ID=$(echo "$CREATE_RESP" | jq -r '.id // empty')
+            echo "创建响应: $CREATE_RESP"
+          fi
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "::error::无法获取 gitcode release id,终止"
+            exit 1
+          fi
+
+          echo "gitcode release id: $RELEASE_ID"
+
+          # 3. 逐个上传资产
+          UPLOADED=0
+          shopt -s nullglob
+          for f in assets/*; do
+            FNAME=$(basename "$f")
+            echo "上传: $FNAME"
+
+            # 检查资产是否已存在(去重)
+            EXISTING=$(curl -s \
+              -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+              "${API}/releases/${TAG}/assets/links" | \
+              jq -r --arg name "$FNAME" '.[] | select(.name == $name) | .id')
+
+            if [ -n "$EXISTING" ]; then
+              echo "  → 已存在,跳过"
+              UPLOADED=$((UPLOADED + 1))
+              continue
+            fi
+
+            # 上传文件
+            UPLOAD_RESP=$(curl -s -X POST \
+              -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+              -F "file=@${f}" \
+              "${API}/uploads")
+            FILE_URL=$(echo "$UPLOAD_RESP" | jq -r '.url // empty')
+
+            if [ -z "$FILE_URL" ]; then
+              echo "  → 上传失败: $UPLOAD_RESP"
+              continue
+            fi
+
+            # 关联到 release
+            curl -s -X POST \
+              -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"${FNAME}\",\"url\":\"${FILE_URL}\",\"link_type\":\"other\"}" \
+              "${API}/releases/${TAG}/assets/links" | jq -r '.name // "ok"' | head -1
+
+            UPLOADED=$((UPLOADED + 1))
+          done
+
+          echo ""
+          echo "✓ gitcode 镜像同步完成: $UPLOADED 个文件"
+          echo "  → https://gitcode.com/${PROJECT_ID//%2F//}/releases/${TAG}"
