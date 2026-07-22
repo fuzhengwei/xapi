@@ -2,7 +2,55 @@ import { useEffect, useState } from "react";
 import { apiKeyApi } from "../lib/api";
 import type { ApiKey, CreateApiKeyInput, ApiKeyStats } from "../types";
 import { formatTime } from "../lib/constants";
-import { Plus, Key, Trash2, Power, X, Check, Copy, ShieldCheck, CalendarClock, Database, Activity, Clock, TrendingUp } from "lucide-react";
+import { Plus, Key, Trash2, Power, X, Check, Copy, CalendarClock, Database, Activity, Clock, Zap } from "lucide-react";
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+function SuccessRateRing({ rate }: { rate: number }) {
+  const r = 28;
+  const c = 2 * Math.PI * r;
+  const offset = c - (rate / 100) * c;
+  const color = rate >= 95 ? "#10b981" : rate >= 80 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="relative flex h-16 w-16 items-center justify-center">
+      <svg className="h-16 w-16 -rotate-90" viewBox="0 0 70 70">
+        <circle cx="35" cy="35" r={r} fill="none" stroke="currentColor" strokeWidth="5" className="text-slate-200/60" />
+        <circle
+          cx="35" cy="35" r={r} fill="none" stroke={color} strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.6s ease" }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-sm font-bold tabular-nums" style={{ color }}>{rate.toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function LatencyBar({ latencyMs }: { latencyMs: number }) {
+  // 0-500ms = green, 500-2000ms = amber, 2000ms+ = red
+  const pct = Math.min(latencyMs / 3000, 1) * 100;
+  const color = latencyMs === 0 ? "#94a3b8" : latencyMs < 500 ? "#10b981" : latencyMs < 2000 ? "#f59e0b" : "#ef4444";
+  const label = latencyMs > 0 ? `${Math.round(latencyMs)}ms` : "—";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/60">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, backgroundColor: color, transition: "width 0.6s ease" }}
+        />
+      </div>
+      <span className="text-sm font-semibold tabular-nums" style={{ color: latencyMs === 0 ? "#94a3b8" : color }}>{label}</span>
+    </div>
+  );
+}
 
 export function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -84,46 +132,88 @@ export function ApiKeysPage() {
                     </button>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="surface-soft rounded-2xl px-4 py-3 text-sm">
-                      <div className="mb-1 flex items-center gap-2 text-muted-foreground"><ShieldCheck size={14} /> 状态</div>
-                      <div className="font-medium">{k.status === 1 ? "已启用" : "已禁用"}</div>
-                    </div>
-                    <div className="surface-soft rounded-2xl px-4 py-3 text-sm">
-                      <div className="mb-1 flex items-center gap-2 text-muted-foreground"><Database size={14} /> 配额</div>
-                      <div className="font-medium">{k.quota_limit > 0 ? `${k.quota_used} / ${k.quota_limit}` : "无限制"}</div>
-                    </div>
-                    <div className="surface-soft rounded-2xl px-4 py-3 text-sm md:col-span-2">
-                      <div className="mb-1 flex items-center gap-2 text-muted-foreground"><CalendarClock size={14} /> 时间信息</div>
-                      <div className="space-y-1 text-sm">
-                        {k.expires_at && <div>过期时间：{formatTime(k.expires_at)}</div>}
-                        <div>创建时间：{formatTime(k.created_at)}</div>
-                      </div>
-                    </div>
+                  {/* 元信息行 — 紧凑标签式 */}
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${k.status === 1 ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${k.status === 1 ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                      {k.status === 1 ? "已启用" : "已禁用"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                      <Database size={11} />
+                      {k.quota_limit > 0 ? `${k.quota_used} / ${k.quota_limit}` : "无限制"}
+                    </span>
+                    {k.expires_at && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700">
+                        <CalendarClock size={11} />
+                        {formatTime(k.expires_at)}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">
+                      {formatTime(k.created_at)}
+                    </span>
                   </div>
 
-                  {/* 使用量统计 */}
+                  {/* 使用量统计 — 仪表盘风格 */}
                   {stats[k.id] && (() => {
                     const s = stats[k.id];
-                    const successRate = s.total_calls > 0 ? (s.success_calls / s.total_calls * 100).toFixed(1) : "0.0";
-                    const successColor = Number(successRate) >= 95 ? "text-emerald-400" : Number(successRate) >= 80 ? "text-amber-400" : "text-red-400";
+                    const successRate = s.total_calls > 0 ? (s.success_calls / s.total_calls * 100) : 0;
                     return (
-                      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                        <div className="surface-soft rounded-2xl px-3 py-2.5 text-sm">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground"><Activity size={12} /> 调用次数</div>
-                          <div className="font-medium">{s.total_calls}</div>
+                      <div className="mt-4 rounded-2xl border border-slate-200/60 bg-gradient-to-br from-slate-50/80 to-white p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            <Activity size={12} /> 使用统计
+                          </span>
+                          {s.last_call_at && (
+                            <span className="text-[11px] text-slate-400">最后调用 {formatTime(s.last_call_at)}</span>
+                          )}
                         </div>
-                        <div className="surface-soft rounded-2xl px-3 py-2.5 text-sm">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground"><TrendingUp size={12} /> 成功率</div>
-                          <div className={`font-medium ${successColor}`}>{successRate}%</div>
-                        </div>
-                        <div className="surface-soft rounded-2xl px-3 py-2.5 text-sm">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground"><Database size={12} /> Token</div>
-                          <div className="font-medium">{s.total_tokens.toLocaleString()}</div>
-                        </div>
-                        <div className="surface-soft rounded-2xl px-3 py-2.5 text-sm">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground"><Clock size={12} /> 平均延迟</div>
-                          <div className="font-medium">{s.avg_latency_ms > 0 ? `${Math.round(s.avg_latency_ms)}ms` : "-"}</div>
+
+                        {/* 主指标行：成功率环 + 三列数据 */}
+                        <div className="flex items-center gap-4">
+                          {/* 成功率环 */}
+                          <div className="flex flex-col items-center gap-1">
+                            <SuccessRateRing rate={successRate} />
+                            <span className="text-[10px] font-medium text-slate-400">成功率</span>
+                          </div>
+
+                          {/* 分隔线 */}
+                          <div className="h-14 w-px bg-slate-200/70" />
+
+                          {/* 三列数据 */}
+                          <div className="flex-1 grid grid-cols-3 gap-2.5">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                                <Activity size={11} /> 调用
+                              </div>
+                              <div className="text-lg font-bold tabular-nums text-slate-800">
+                                {formatNumber(s.total_calls)}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                成功 {formatNumber(s.success_calls)} / 失败 {formatNumber(s.failed_calls)}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                                <Zap size={11} /> Token
+                              </div>
+                              <div className="text-lg font-bold tabular-nums text-slate-800">
+                                {formatNumber(s.total_tokens)}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                ↑{formatNumber(s.prompt_tokens)} ↓{formatNumber(s.completion_tokens)}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                                <Clock size={11} /> 延迟
+                              </div>
+                              <div className="mt-1">
+                                <LatencyBar latencyMs={s.avg_latency_ms} />
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
